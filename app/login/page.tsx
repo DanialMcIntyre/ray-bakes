@@ -41,7 +41,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#a3dfff" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: 'var(--page-bg)' }}>
       <Navbar>
         <>
           <button

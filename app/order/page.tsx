@@ -161,7 +161,7 @@ export default function OrderPage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: isAdminView ? "#f5e6d3" : "#a3dfff" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: isAdminView ? "#f5e6d3" : 'var(--page-bg)' }}>
       <Navbar isAdmin={isAdminView}>
         <>
           <button onClick={() => router.push("/home")}>Home</button>
@@ -173,8 +173,8 @@ export default function OrderPage() {
       </Navbar>
 
       {/* CONTENT */}
-      <div style={{ paddingTop: "6rem", paddingBottom: "2.5rem", background: isAdminView ? "linear-gradient(180deg,#fbf7f2 0%,#faf8f5 100%)" : "linear-gradient(180deg,#e9f8ff 0%,#a3dfff 100%)" }}>
-        <Card style={{ maxWidth: "820px", margin: "0 auto", borderRadius: "1rem", backgroundColor: isAdminView ? "#faf8f5" : "white", boxShadow: "0 12px 40px rgba(2,6,23,0.08)" }}>
+      <div style={{ paddingTop: "6rem", paddingBottom: "2.5rem", background: isAdminView ? "linear-gradient(180deg,#fbf7f2 0%,#faf8f5 100%)" : `linear-gradient(180deg,#e9f8ff 0%, ${'var(--page-bg)'} 100%)` }}>
+        <Card style={{ maxWidth: "820px", margin: "0 auto", borderRadius: "1rem", background: isAdminView ? "#faf8f5" : "linear-gradient(135deg,#f8fbff 0%, #ffffff 40%, #e6f9ff 100%)", boxShadow: "0 12px 40px rgba(2,6,23,0.08)" }}>
           <CardContent style={{ padding: "2.25rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
               <h1 style={{ fontSize: "2rem", fontWeight: "bold" }}>🍪 {isAdminView ? "Custom Order" : "Cookie Order"}</h1>
@@ -320,7 +320,7 @@ export default function OrderPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <strong style={{ display: "block" }}>{cookie.flavour}</strong>
-                      <p style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>{cookie.description}</p>
+                      <p style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>{cookie.ingredients}</p>
                       {!isAdminView && (
                         <div style={{ marginTop: "0.5rem" }}>
                           <select

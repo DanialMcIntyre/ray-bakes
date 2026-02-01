@@ -48,6 +48,7 @@
 
 :root {
   --radius: 0.625rem;
+  --page-bg: #e6f9ff;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -121,5 +122,14 @@
   }
   body {
     @apply bg-background text-foreground;
+  }
+}
+
+@media (max-width: 720px) {
+  .hero {
+    padding: 1.5rem 1rem 0.75rem !important;
+  }
+  .hero-card {
+    padding: 1rem !important;
   }
 }

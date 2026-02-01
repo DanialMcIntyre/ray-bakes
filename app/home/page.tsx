@@ -86,7 +86,7 @@ export default function HomePage() {
     };
   }, [flavours]);
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#e6f9ff" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: 'var(--page-bg)' }}>
       <Navbar />
 
       <header style={{ padding: "6.5rem 1.25rem 2rem", display: "flex", justifyContent: "center" }}>
@@ -103,10 +103,10 @@ export default function HomePage() {
             </div>
 
             <div style={{ flex: "0 0 320px", display: "grid", gridTemplateColumns: "1fr", gap: "0.75rem" }}>
-              <div style={{ height: 140, borderRadius: 12, background: "#fff url('/cookies-hero.jpg') center/cover no-repeat", boxShadow: "0 8px 20px rgba(2,6,23,0.06)" }} />
+              <div style={{ height: 140, borderRadius: 12, background: "#fff url('/cookies/cookies1.jpg') center/cover no-repeat", boxShadow: "0 8px 20px rgba(2,6,23,0.06)" }} />
               <div style={{ display: "flex", gap: "0.5rem" }}>
-                <div style={{ flex: 1, height: 70, borderRadius: 10, background: "#fff url('/cookie-1.jpg') center/cover no-repeat", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" }} />
-                <div style={{ flex: 1, height: 70, borderRadius: 10, background: "#fff url('/cookie-2.jpg') center/cover no-repeat", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" }} />
+                <div style={{ flex: 1, height: 70, borderRadius: 10, background: "#fff url('/cookies/cookies2.jpg') center/cover no-repeat", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" }} />
+                <div style={{ flex: 1, height: 70, borderRadius: 10, background: "#fff url('/cookies/cookies3.jpeg') center/cover no-repeat", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" }} />
               </div>
             </div>
           </div>
