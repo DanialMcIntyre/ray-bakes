@@ -13,6 +13,8 @@ export default function HomePage() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [showReportPopup, setShowReportPopup] = useState(false);
+  const [showContactPopup, setShowContactPopup] = useState(false);
 
   const HoverButton: React.FC<React.PropsWithChildren<{ onClick?: () => void; style?: React.CSSProperties }>> = ({ children, onClick, style }) => {
     const [hover, setHover] = useState(false);
@@ -98,7 +100,17 @@ export default function HomePage() {
 
               <div style={{ marginTop: "1.25rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
                   <HoverButton onClick={() => router.push('/order')} style={{ background: "linear-gradient(90deg,#6366f1,#06b6d4)", color: "white", padding: "0.6rem 1rem", borderRadius: 12, border: "none", fontWeight: 700, boxShadow: "0 6px 12px rgba(6,182,212,0.12)", zIndex: 2 }}>Order Now</HoverButton>
-                  <HoverButton onClick={() => router.push('/order')} style={{ background: "transparent", border: "1px solid rgba(15,23,42,0.06)", padding: "0.55rem 0.9rem", borderRadius: 12, fontWeight: 600 }}>See Menu</HoverButton>
+                  <HoverButton onClick={() => {
+                    const el = document.getElementById('menu-section');
+                    const NAV_OFFSET = 72;
+                    if (el) {
+                      const y = el.getBoundingClientRect().top + window.scrollY - NAV_OFFSET;
+                      window.scrollTo({ top: y, behavior: 'smooth' });
+                      // add temporary highlight
+                      el.classList.add('highlight');
+                      window.setTimeout(() => el.classList.remove('highlight'), 2400);
+                    }
+                  }} style={{ background: "transparent", border: "1px solid rgba(15,23,42,0.06)", padding: "0.55rem 0.9rem", borderRadius: 12, fontWeight: 600 }}>See Menu</HoverButton>
               </div>
             </div>
 
@@ -115,7 +127,7 @@ export default function HomePage() {
 
       <main style={{ padding: "1rem 1.25rem 3rem" }}>
         <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto" }}>
-          <section style={{ marginBottom: "1.5rem" }}>
+          <section id="menu-section" style={{ marginBottom: "1.5rem" }}>
             <h3 style={{ margin: "0 0 0.25rem 0", color: "#0f172a", fontSize: '1.25rem', letterSpacing: '0.2px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ display: 'inline-block', padding: '0.35rem 0.8rem', background: '#fde68a', borderRadius: 10, fontSize: '0.95rem', color: '#92400e', fontWeight: 800 }}>Menu</span>
               <span style={{ color: '#0f172a', fontWeight: 800, fontSize: 18 }}>All Flavours</span>
@@ -285,20 +297,60 @@ export default function HomePage() {
               </div>
             )}
 
-          {/* removed 'Why choose Rays?' per UI update; show CTA button */}
-          {/* Removed bottom CTA per request */}
         </div>
       </main>
 
           <footer style={{ borderTop: "1px solid rgba(2,6,23,0.04)", padding: "1rem", marginTop: "2rem" }}>
         <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", color: "#475569" }}>
-          <div>© {new Date().getFullYear()} Rays Cookies</div>
+          <div>© {new Date().getFullYear()} Ray's Cookies</div>
           <div style={{ display: "flex", gap: "1rem" }}>
-            <a href="#" style={{ color: "#475569", textDecoration: "none" }}>Contact</a>
-            <a href="#" style={{ color: "#475569", textDecoration: "none" }}>Report Issues</a>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowContactPopup(true);
+                  }}
+                  style={{ color: "#475569", textDecoration: "none" }}
+                >
+                  Contact
+                </a>
+                <a
+                  href="#"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setShowReportPopup(true);
+                  }}
+                  style={{ color: "#475569", textDecoration: "none" }}
+                >
+                  Report Issues
+                </a>
           </div>
         </div>
       </footer>
+
+          {showReportPopup && (
+            <div style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1400 }}>
+              <div style={{ minWidth: 260, maxWidth: 340, background: 'white', color: '#0f172a', padding: '0.75rem 1rem', borderRadius: 12, boxShadow: '0 12px 40px rgba(2,6,23,0.12)', border: '1px solid rgba(2,6,23,0.06)', fontSize: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                  <div style={{ fontWeight: 700 }}>Report an issue</div>
+                  <button onClick={() => setShowReportPopup(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#475569', fontSize: 16 }}>✕</button>
+                </div>
+                <div style={{ marginTop: 6, color: '#374151', lineHeight: 1.4 }}>Please email <a href="mailto:mcintyredanial@gmail.com" style={{ color: '#0369a1', textDecoration: 'underline' }}>mcintyredanial@gmail.com</a> with a short description and screenshots if possible.</div>
+              </div>
+            </div>
+          )}
+
+          {showContactPopup && (
+            <div style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1400 }}>
+              <div style={{ minWidth: 260, maxWidth: 340, background: 'white', color: '#0f172a', padding: '0.75rem 1rem', borderRadius: 12, boxShadow: '0 12px 40px rgba(2,6,23,0.12)', border: '1px solid rgba(2,6,23,0.06)', fontSize: 14 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+                  <div style={{ fontWeight: 700 }}>Contact Ray</div>
+                  <button onClick={() => setShowContactPopup(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#475569', fontSize: 16 }}>✕</button>
+                </div>
+                <div style={{ marginTop: 6, color: '#374151', lineHeight: 1.4 }}>You can reach Ray on Instagram: <a href="https://www.instagram.com/rayscookies.to/" target="_blank" rel="noreferrer" style={{ color: '#0369a1', textDecoration: 'underline' }}>instagram.com/rayscookies.to</a></div>
+              </div>
+            </div>
+          )}
     </div>
   );
 }

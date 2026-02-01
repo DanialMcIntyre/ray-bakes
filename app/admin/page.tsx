@@ -335,9 +335,7 @@ export default function AdminPage() {
             + New Order
           </button>
 
-          <button onClick={handleLogout}>
-            Logout
-          </button>
+          {/* Logout moved to navbar for global display */}
         </>
       </Navbar>
 

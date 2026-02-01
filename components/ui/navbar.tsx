@@ -1,7 +1,9 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 interface NavbarProps {
   isAdmin?: boolean;
@@ -10,6 +12,27 @@ interface NavbarProps {
 
 export default function Navbar({ isAdmin = false, children }: NavbarProps) {
   const router = useRouter();
+  const [sessionIsPresent, setSessionIsPresent] = useState(false);
+  const pathname = usePathname?.() ?? "";
+
+  useEffect(() => {
+    let mounted = true;
+    // check current session
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setSessionIsPresent(Boolean(data.session));
+    });
+
+    // listen for changes
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSessionIsPresent(Boolean(session));
+    });
+
+    return () => {
+      mounted = false;
+      sub?.subscription?.unsubscribe?.();
+    };
+  }, []);
 
   const linkStyle: React.CSSProperties = {
     backgroundColor: "transparent",
@@ -101,9 +124,9 @@ export default function Navbar({ isAdmin = false, children }: NavbarProps) {
           onMouseLeave={(e) => (e.currentTarget.style.transform = "scale(1)")}
           onClick={() => router.push("/home")}
         >
-          🍪 Rays Cookies
+          🍪 Ray's Cookies
         </h1>
-        {isAdmin && (
+        {(isAdmin || sessionIsPresent) && (
           <span style={{ backgroundColor: "#402b2c", color: "#f5e6d3", padding: "0.25rem 0.65rem", borderRadius: 999, fontSize: "0.75rem", fontWeight: 700 }}>
             ADMIN
           </span>
@@ -111,6 +134,27 @@ export default function Navbar({ isAdmin = false, children }: NavbarProps) {
       </div>
 
       <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", height: "100%" }}>
+        {pathname.startsWith("/admin") && (
+          <button
+            onClick={() => router.push("/home")}
+            style={neutralLinkStyle}
+            data-original-style={styleObjToCss(neutralLinkStyle as any)}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              if (!el.dataset.originalStyle) storeOriginal(el, neutralLinkStyle as any);
+              applyHover(el);
+            }}
+            onMouseLeave={(e) => applyLeave(e.currentTarget)}
+            onMouseDown={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              if (!el.dataset.originalStyle) storeOriginal(el, neutralLinkStyle as any);
+              applyDown(el);
+            }}
+            onMouseUp={(e) => applyUp(e.currentTarget)}
+          >
+            Home
+          </button>
+        )}
         {children ? (
           React.Children.toArray(children).map((child) => {
             if (!React.isValidElement(child)) return child;
@@ -207,6 +251,54 @@ export default function Navbar({ isAdmin = false, children }: NavbarProps) {
             </button>
           </>
         )}
+          {((pathname === "/" || pathname === "/home") && (isAdmin || sessionIsPresent)) && (
+            <button
+              onClick={() => router.push("/admin")}
+              style={neutralLinkStyle}
+              data-original-style={styleObjToCss(neutralLinkStyle as any)}
+              onMouseEnter={(e) => {
+                const el = e.currentTarget as HTMLElement;
+                if (!el.dataset.originalStyle) storeOriginal(el, neutralLinkStyle as any);
+                applyHover(el);
+              }}
+              onMouseLeave={(e) => applyLeave(e.currentTarget)}
+              onMouseDown={(e) => {
+                const el = e.currentTarget as HTMLElement;
+                if (!el.dataset.originalStyle) storeOriginal(el, neutralLinkStyle as any);
+                applyDown(el);
+              }}
+              onMouseUp={(e) => applyUp(e.currentTarget)}
+            >
+              Admin
+            </button>
+          )}
+          {sessionIsPresent && (
+            <button
+              onClick={async () => {
+                try {
+                  await supabase.auth.signOut();
+                } finally {
+                  router.push('/login');
+                }
+              }}
+              style={neutralLinkStyle}
+              data-original-style={styleObjToCss(neutralLinkStyle as any)}
+              onMouseEnter={(e) => {
+                const el = e.currentTarget as HTMLElement;
+                if (!el.dataset.originalStyle) storeOriginal(el, neutralLinkStyle as any);
+                applyHover(el);
+              }}
+              onMouseLeave={(e) => applyLeave(e.currentTarget)}
+              onMouseDown={(e) => {
+                const el = e.currentTarget as HTMLElement;
+                if (!el.dataset.originalStyle) storeOriginal(el, neutralLinkStyle as any);
+                applyDown(el);
+              }}
+              onMouseUp={(e) => applyUp(e.currentTarget)}
+            >
+              Logout
+            </button>
+          )}
       </div>
     </nav>
   );
