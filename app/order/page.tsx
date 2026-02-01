@@ -1,7 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
+import Navbar from "@/components/ui/navbar";
+import flavours from "@/lib/flavours";
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,16 +22,10 @@ interface PricingConfig {
   Large: number;
 }
 
-const cookies = [
-  { flavour: "Chocolate Chip", image: "/cookies/choco.jpg", description: "Flour, Sugar, Butter, Chocolate Chips" },
-  { flavour: "Oreo", image: "/cookies/oreo.jpg", description: "Flour, Cocoa, Sugar, Butter, Vanilla" },
-  { flavour: "Biscoff", image: "/cookies/biscoff.jpg", description: "Flour, Sugar, Biscoff Spread, Butter" },
-  { flavour: "Birthday Cake", image: "/cookies/birthday.jpg", description: "Flour, Sugar, Butter, Sprinkles, Vanilla" },
-];
+const cookies = flavours;
 
 const quantities = [5, 10, 15, 20, 25, 30, 35, 40];
 const adminQuantities = Array.from({ length: 100 }, (_, i) => i + 1);
-
 
 const DEFAULT_PRICE_PER_COOKIE = 2.5;
 const PRICE_PER_10 = DEFAULT_PRICE_PER_COOKIE * 10;
@@ -45,8 +42,6 @@ export default function OrderPage() {
   const [dueDate, setDueDate] = useState("");
   const [customization, setCustomization] = useState("");
   const [items, setItems] = useState<CookieItem[]>([]);
-  const [hoveredButton, setHoveredButton] = useState<string | null>(null);
-  const [activeButton, setActiveButton] = useState<string | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
   const [pricing, setPricing] = useState<PricingConfig>(DEFAULT_PRICING);
@@ -103,13 +98,31 @@ export default function OrderPage() {
   const placeOrder = async () => {
     if (!canSubmit) return;
 
+    const nowInTimeZone = (timeZone = "America/New_York") => {
+      const now = new Date();
+      const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(now);
+
+      const get = (type: string) => parts.find(p => p.type === type)?.value || "00";
+      const year = get("year");
+      const month = get("month");
+      const day = get("day");
+
+      // Return date only in YYYY-MM-DD for the specified timezone
+      return `${year}-${month}-${day}`;
+    };
+
     const { data: orderData, error: orderError } = await supabase
       .from("orders")
       .insert([
         {
           buyer: name.trim(),
           instagram_handle: instagram.trim(),
-          date_order_created: new Date().toISOString(),
+          date_order_created: nowInTimeZone("America/New_York"),
           date_order_due: dueDate,
           total_revenue: totalCost,
           customization: customization.trim() || null,
@@ -147,93 +160,22 @@ export default function OrderPage() {
     setItems([]);
   };
 
-  const navButtonStyle = (id: string): React.CSSProperties => ({
-    backgroundColor:
-      activeButton === id
-        ? "rgba(255,255,255,0.35)"
-        : hoveredButton === id
-        ? "rgba(255,255,255,0.2)"
-        : "transparent",
-    color: "white",
-    border: "none",
-    padding: "0.5rem 1rem",
-    borderRadius: "0.5rem",
-    cursor: "pointer",
-  });
-
   return (
     <div style={{ minHeight: "100vh", backgroundColor: isAdminView ? "#f5e6d3" : "#a3dfff" }}>
-      {/* NAVBAR */}
-      <nav
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          backgroundColor: isAdminView ? "#8b6f47" : "#56baf2",
-          padding: "1rem 2rem",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          boxShadow: isAdminView ? "0 2px 8px rgba(0,0,0,0.3)" : "0 2px 5px rgba(0,0,0,0.2)",
-          zIndex: 1000,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
-          <h1
-            style={{ fontSize: "1.5rem", fontWeight: "bold", cursor: "pointer", color: "white" }}
-            onClick={() => router.push("/home")}
-          >
-            🍪 Rays Cookies
-          </h1>
+      <Navbar isAdmin={isAdminView}>
+        <>
+          <button onClick={() => router.push("/home")}>Home</button>
+          <button onClick={() => router.push("/order")}>Make Order</button>
           {isAdminView && (
-            <span style={{
-              backgroundColor: "#402b2c",
-              color: "#f5e6d3",
-              padding: "0.25rem 0.75rem",
-              borderRadius: "999px",
-              fontSize: "0.75rem",
-              fontWeight: "600",
-              letterSpacing: "0.5px"
-            }}>
-              ADMIN
-            </span>
+            <button onClick={() => router.push("/admin")}>Admin</button>
           )}
-        </div>
-
-        <div style={{ display: "flex", gap: "1rem" }}>
-          {["home", "order"].map(page => (
-            <button
-              key={page}
-              style={navButtonStyle(page)}
-              onClick={() => router.push(page === "home" ? "/home" : "/order")}
-              onMouseEnter={() => setHoveredButton(page)}
-              onMouseLeave={() => setHoveredButton(null)}
-              onMouseDown={() => setActiveButton(page)}
-              onMouseUp={() => setActiveButton(null)}
-            >
-              {page === "home" ? "Home" : "Make Order"}
-            </button>
-          ))}
-          {isAdminView && (
-            <button
-              style={navButtonStyle("admin")}
-              onClick={() => router.push("/admin")}
-              onMouseEnter={() => setHoveredButton("admin")}
-              onMouseLeave={() => setHoveredButton(null)}
-              onMouseDown={() => setActiveButton("admin")}
-              onMouseUp={() => setActiveButton(null)}
-            >
-              Admin
-            </button>
-          )}
-        </div>
-      </nav>
+        </>
+      </Navbar>
 
       {/* CONTENT */}
-      <div style={{ paddingTop: "6rem", paddingBottom: "2rem" }}>
-        <Card style={{ maxWidth: "750px", margin: "0 auto", borderRadius: "1rem", backgroundColor: isAdminView ? "#faf8f5" : undefined }}>
-          <CardContent style={{ padding: "2rem" }}>
+      <div style={{ paddingTop: "6rem", paddingBottom: "2.5rem", background: isAdminView ? "linear-gradient(180deg,#fbf7f2 0%,#faf8f5 100%)" : "linear-gradient(180deg,#e9f8ff 0%,#a3dfff 100%)" }}>
+        <Card style={{ maxWidth: "820px", margin: "0 auto", borderRadius: "1rem", backgroundColor: isAdminView ? "#faf8f5" : "white", boxShadow: "0 12px 40px rgba(2,6,23,0.08)" }}>
+          <CardContent style={{ padding: "2.25rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
               <h1 style={{ fontSize: "2rem", fontWeight: "bold" }}>🍪 {isAdminView ? "Custom Order" : "Cookie Order"}</h1>
               {isAdminView && (
@@ -357,19 +299,25 @@ export default function OrderPage() {
                 <div
                   key={cookie.flavour}
                   style={{
-                    border: "1px solid #ccc",
-                    padding: "1rem",
-                    borderRadius: "1rem",
+                    border: "1px solid #e6eef6",
+                    padding: "0.9rem",
+                    borderRadius: "0.9rem",
                     marginTop: "1rem",
+                    background: "white",
+                    boxShadow: "0 6px 18px rgba(2,6,23,0.04)",
                   }}
                 >
                   {/* Image + Description */}
                   <div style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
-                    <img
-                      src={cookie.image}
-                      alt={cookie.flavour}
-                      style={{ width: "80px", height: "80px", borderRadius: "0.5rem" }}
-                    />
+                    <div style={{ width: 96, height: 96, flex: "0 0 96px", position: "relative", borderRadius: 12, overflow: "hidden", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.03)" }}>
+                      <Image
+                        src={cookie.image ?? '/cookies/birthday.jpg'}
+                        alt={cookie.flavour}
+                        width={96}
+                        height={96}
+                        style={{ objectFit: "cover", width: "100%", height: "100%" }}
+                      />
+                    </div>
                     <div style={{ flex: 1 }}>
                       <strong style={{ display: "block" }}>{cookie.flavour}</strong>
                       <p style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>{cookie.description}</p>
@@ -379,12 +327,14 @@ export default function OrderPage() {
                             value={items.find(i => i.flavour === cookie.flavour)?.quantity || ""}
                             onChange={e => handleQuantityChange(cookie.flavour, e.target.value)}
                             style={{
-                              minWidth: "70px",
-                              padding: "0.25rem",
-                              borderRadius: "0.375rem",
-                              border: "1px solid #ccc",
-                              fontSize: "0.85rem",
+                              minWidth: "90px",
+                              padding: "0.4rem 0.5rem",
+                              borderRadius: "0.5rem",
+                              border: "1px solid #e6eef6",
+                              fontSize: "0.9rem",
                               textAlign: "center",
+                              background: "#fff",
+                              boxShadow: "0 4px 12px rgba(2,6,23,0.04)",
                             }}
                           >
                             <option value="">Qty</option>
@@ -588,11 +538,15 @@ export default function OrderPage() {
                 width: "100%",
                 padding: "0.75rem",
                 borderRadius: "1rem",
-                backgroundColor: canSubmit ? "#402b2c" : "#aaa",
+                background: canSubmit ? "linear-gradient(90deg,#6b3b2a,#402b2c)" : "#ccc",
                 color: "white",
                 border: "none",
                 cursor: canSubmit ? "pointer" : "not-allowed",
+                boxShadow: canSubmit ? "0 10px 30px rgba(64,43,44,0.14)" : "none",
+                transition: "transform 0.12s, box-shadow 0.12s, filter 0.12s",
               }}
+              onMouseEnter={e => { if (canSubmit) { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.03)"; } }}
+              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)"; (e.currentTarget as HTMLButtonElement).style.filter = "none"; }}
             >
               Place Order
             </button>

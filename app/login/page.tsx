@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Navbar from "@/components/ui/navbar";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
@@ -39,61 +40,22 @@ export default function LoginPage() {
     }
   };
 
-  const navButtonStyle = (id: string): React.CSSProperties => ({
-    backgroundColor:
-      activeButton === id
-        ? "rgba(255,255,255,0.35)"
-        : hoveredButton === id
-        ? "rgba(255,255,255,0.2)"
-        : "transparent",
-    color: "white",
-    border: "none",
-    padding: "0.5rem 1rem",
-    borderRadius: "0.5rem",
-    cursor: "pointer",
-  });
-
   return (
     <div style={{ minHeight: "100vh", backgroundColor: "#a3dfff" }}>
-      {/* NAVBAR */}
-      <nav
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          backgroundColor: "#56baf2",
-          padding: "1rem 2rem",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          boxShadow: "0 2px 5px rgba(0,0,0,0.2)",
-          zIndex: 1000,
-        }}
-      >
-        <h1
-          style={{ fontSize: "1.5rem", fontWeight: "bold", cursor: "pointer", color: "white" }}
-          onClick={() => router.push("/home")}
-        >
-          🍪 Rays Cookies
-        </h1>
-
-        <div style={{ display: "flex", gap: "1rem" }}>
-          {["home", "order"].map(page => (
-            <button
-              key={page}
-              style={navButtonStyle(page)}
-              onClick={() => router.push(page === "home" ? "/home" : "/order")}
-              onMouseEnter={() => setHoveredButton(page)}
-              onMouseLeave={() => setHoveredButton(null)}
-              onMouseDown={() => setActiveButton(page)}
-              onMouseUp={() => setActiveButton(null)}
-            >
-              {page === "home" ? "Home" : "Make Order"}
-            </button>
-          ))}
-        </div>
-      </nav>
+      <Navbar>
+        <>
+          <button
+            onClick={() => router.push("/home")}
+          >
+            Home
+          </button>
+          <button
+            onClick={() => router.push("/order")}
+          >
+            Make Order
+          </button>
+        </>
+      </Navbar>
 
       {/* LOGIN FORM */}
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", paddingTop: "4rem" }}>
@@ -119,14 +81,20 @@ export default function LoginPage() {
           <button
             onClick={handleLogin}
             disabled={loading}
+            onMouseEnter={() => setHoveredButton("login")}
+            onMouseLeave={() => setHoveredButton(null)}
+            onMouseDown={() => setActiveButton("login")}
+            onMouseUp={() => setActiveButton(null)}
             style={{
               width: "100%",
               padding: "0.5rem",
               borderRadius: "0.5rem",
-              backgroundColor: "#402b2c",
+              backgroundColor: activeButton === "login" ? "#2c1f1f" : hoveredButton === "login" ? "#523a37" : "#402b2c",
               color: "white",
               fontWeight: "bold",
-              cursor: "pointer",
+              cursor: loading ? "not-allowed" : "pointer",
+              transition: "background-color 0.12s, transform 0.06s",
+              transform: activeButton === "login" ? "scale(0.995)" : "none",
             }}
           >
             {loading ? "Logging in..." : "Login"}

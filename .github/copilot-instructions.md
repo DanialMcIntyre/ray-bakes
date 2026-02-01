@@ -1,43 +1,36 @@
+# AI Copilot Instructions — ray-bakes
+# AI Copilot Instructions — ray-bakes
 
-# AI Copilot Instructions for ray-bakes
+Purpose: concise, repo-specific guidance to help coding agents be productive.
 
-## Project Overview
-Ray Bakes is a Next.js 16 bakery order management system with a public order interface and an admin dashboard. It uses Supabase for authentication and data, Tailwind CSS for styling, and Radix UI for accessible components.
+## Big picture
+- This is a Next.js (v16) app using the App Router — primary routes live under `app/`.
+- Components in `components/ui/` are UI primitives; most components are server components by default. Files that begin with `"use client"` are client components (e.g., `app/admin/page.tsx`, `components/ui/navbar.tsx`).
+- Supabase is the backend: client is created in `lib/supabaseClient.ts` and is used directly from client components.
 
-## Architecture & Data Flow
-- **Framework**: Next.js 16 (App Router, TypeScript strict mode)
-- **UI**: Radix UI primitives, custom-styled in [components/ui/](components/ui/), composed with Tailwind 4 utility classes
-- **Database/Auth**: Supabase (PostgreSQL backend, email/password auth)
-- **Pages**: All routes in [app/](app/) use the App Router. Client components (with `"use client"`) manage state and call Supabase directly.
-- **Order Model**: See [app/admin/page.tsx](app/admin/page.tsx) for the `Order` interface and nested item structure. Orders are fetched with SQL-style string queries for nested data.
+## Key workflows (commands)
+- `npm run dev` — start Next dev server (localhost:3000).
+- `npm run build` && `npm run start` — build and run production.
+- `npm run lint` — run ESLint (config in `eslint.config.mjs`).
 
-## Key Workflows
-- **Authentication**: Always check Supabase session in admin pages (`useEffect`), redirect to `/login` if not authenticated. Login uses `supabase.auth.signInWithPassword()`.
-- **Admin Dashboard**: Fetches orders (with nested items), supports filtering, sorting, inline editing (with backup/cancel), and CSV export. See [app/admin/page.tsx](app/admin/page.tsx).
-- **Supabase Client**: Use the singleton from [lib/supabaseClient.ts](lib/supabaseClient.ts). Requires `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local`.
+## Project conventions & patterns
+- Path alias: `@/*` → project root (see `tsconfig.json`). Prefer imports like `@/lib/supabaseClient`.
+- Client vs Server boundary: maintain separation. Browser APIs (`window`, `Blob`, `document`, CSV download) appear in client components (notably `app/admin/page.tsx`). Do not move browser-only code into server components.
+- UI primitives: reuse components from `components/ui/`. Some components (e.g., `components/ui/navbar.tsx`) use inline styles and lightweight DOM-style handlers (`data-original-style` and `style.cssText`) for hover/active effects — copy this pattern only for similar low-level interactions.
 
-## Development & Build
-- `npm run dev` — Start dev server (localhost:3000, hot reload)
-- `npm run build` — Production build
-- `npm run start` — Run production build locally
-- `npm run lint` — Run ESLint (see [eslint.config.mjs](eslint.config.mjs))
+## Supabase & data patterns
+- Single client entry: `lib/supabaseClient.ts` — expects `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` in `.env.local` for local development.
+- Typical queries: nested selects (e.g., `orders` with `order_items (...)`) are read then normalized on the client to compute aggregates like totals.
+- Admin updates: the current pattern deletes existing `order_items` rows then inserts new ones. When changing this flow, ensure operations are error-checked and consistent (client-side sequence can cause partial updates).
 
-## Patterns & Conventions
-- **UI Components**: Use/reuse primitives in [components/ui/](components/ui/). Compose with Tailwind classes and the `cn()` utility ([lib/utils.ts](lib/utils.ts)).
-  - Example: `className={cn("px-4 py-2", isActive && "bg-blue-500")}`
-- **State**: Use React `useState` and `useEffect` for local/async state. No external state libraries.
-- **Supabase**: Always destructure `{ data, error }` and check for errors before using data. Use SQL-style string queries for nested selects.
-- **Styling**: Tailwind 4 only (no CSS-in-JS). Prefer utility classes over inline styles.
-- **Type Safety**: Define interfaces for API responses. Use `React.ReactNode` for children props.
-- **Path Aliases**: `@/*` resolves to project root (e.g., `@/lib/supabaseClient` → `./lib/supabaseClient.ts`).
+## Files to inspect for examples
+- Auth & admin flows: `app/admin/page.tsx` (session checks, nested selects, CSV export)
+- UI examples: `components/ui/navbar.tsx`, `components/ui/button.tsx`, `components/ui/card.tsx`
+- Supabase client: `lib/supabaseClient.ts`
 
-## Agent-Specific Guidance
-1. **Always validate Supabase session in admin features.**
-2. **Require `.env.local` with Supabase keys for local dev.**
-3. **Do not mix server/client logic in the same file.**
-4. **Follow Radix UI + Tailwind patterns from [components/ui/](components/ui/) for new UI.**
-5. **Display Supabase errors to users (see login/admin pages).**
-6. **Reference [app/admin/page.tsx](app/admin/page.tsx) for advanced data fetching, filtering, and editing patterns.**
+## What to avoid / gotchas
+- Do not assume a separate backend service — Supabase is used directly from the app.
+- Avoid moving browser-only logic into server components.
+- Inline-style DOM manipulations exist in the navbar — if refactoring, keep the `data-original-style` pattern or port behavior carefully.
 
----
-If any conventions or workflows are unclear, ask for clarification or examples from the codebase.
+If you want more detail on any of the examples above (line-level snippets, alternate refactor suggestions, or tests to add), tell me which area and I will expand.

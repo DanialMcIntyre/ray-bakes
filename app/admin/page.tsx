@@ -1,14 +1,19 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import Navbar from "@/components/ui/navbar";
+
+const STATUS_OPTIONS = ["Pending", "Confirmed", "Delivered"] as const;
 
 interface OrderItem {
   flavour: string;
   quantity: number;
   size: "Small" | "Regular" | "Large";
 }
+
+type Status = (typeof STATUS_OPTIONS)[number];
 
 interface Order {
   id: number;
@@ -18,7 +23,7 @@ interface Order {
   date_order_due: string;
   total_revenue: number;
   customization: string | null;
-  status: string;
+  status: Status;
   items: OrderItem[];
   totalCookies: number;
   deleted?: boolean;
@@ -28,10 +33,9 @@ export default function AdminPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [orders, setOrders] = useState<Order[]>([]);
-  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]);
   const [error, setError] = useState<string | null>(null);
-    const [statusFilter, setStatusFilter] = useState<string[]>([]); 
-    const [statusDropdownOpen, setStatusDropdownOpen] = useState(false); 
+  const [statusFilter, setStatusFilter] = useState<Status[]>([]);
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
 
   const [sortField, setSortField] = useState<"date" | "revenue" | "id" | "buyer" | "instagram" | "dueDate">("date");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
@@ -39,24 +43,27 @@ export default function AdminPage() {
   const [backupOrders, setBackupOrders] = useState<Order[]>([]);
   const [addSelection, setAddSelection] = useState<Record<number, string>>({});
   const [searchTerm, setSearchTerm] = useState<string>("");
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(20);
   const [showApplySuccess, setShowApplySuccess] = useState<boolean>(false);
   const [showDeleteSuccess, setShowDeleteSuccess] = useState<boolean>(false);
-  const [deletedOrderId, setDeletedOrderId] = useState<number | null>(null);const [allFlavours, setAllFlavours] = useState<string[]>([]);
+    const [deletedOrderId, setDeletedOrderId] = useState<number | null>(null);
+    const [allFlavours, setAllFlavours] = useState<string[]>([]);
 
     useEffect(() => {
     const fetchFlavours = async () => {
-        try {
+      try {
         const { data: flavourData, error: flavourError } = await supabase
-            .from("flavours_view")
-            .select("flavour");
+          .from("flavours_view")
+          .select("flavour");
 
         if (flavourError) throw flavourError;
 
-        setAllFlavours(flavourData?.map(f => f.flavour) || []);
-        } catch (err: any) {
+        setAllFlavours((flavourData as Array<{ flavour: string }> | null)?.map((f) => f.flavour) || []);
+      } catch (err: any) {
         console.error("Failed to fetch flavours:", err);
         setError("Failed to load flavours.");
-        }
+      }
     };
 
     fetchFlavours();
@@ -100,12 +107,25 @@ export default function AdminPage() {
       }));
 
       setOrders(enrichedOrders);
-      setFilteredOrders(enrichedOrders);
     } catch (err: any) {
       console.error(err);
       setError("Failed to load orders.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const formatDateLocal = (s?: string | null) => {
+    if (!s) return "";
+    // If stored as YYYY-MM-DD (no time), construct a local Date to avoid UTC shift
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const [y, m, d] = s.split("-").map(Number);
+      return new Date(y, m - 1, d).toLocaleDateString();
+    }
+    try {
+      return new Date(s).toLocaleDateString();
+    } catch {
+      return s;
     }
   };
 
@@ -146,15 +166,15 @@ export default function AdminPage() {
     window.URL.revokeObjectURL(url);
   };
 
-  useEffect(() => {
+  const filteredOrders = useMemo(() => {
     let filtered = [...orders];
     if (statusFilter.length > 0) {
-    filtered = filtered.filter(o => statusFilter.includes(o.status));
+      filtered = filtered.filter(o => statusFilter.includes(o.status));
     }
 
     if (searchTerm) {
       const term = searchTerm.toLowerCase();
-      filtered = filtered.filter(o => 
+      filtered = filtered.filter(o =>
         o.buyer.toLowerCase().includes(term) ||
         o.instagram_handle.toLowerCase().includes(term) ||
         o.id.toString().includes(term)
@@ -163,22 +183,44 @@ export default function AdminPage() {
 
     filtered.sort((a, b) => {
       switch (sortField) {
-        case "date": return sortOrder === "asc"
-          ? new Date(a.date_order_created).getTime() - new Date(b.date_order_created).getTime()
-          : new Date(b.date_order_created).getTime() - new Date(a.date_order_created).getTime();
-        case "revenue": return sortOrder === "asc" ? a.total_revenue - b.total_revenue : b.total_revenue - a.total_revenue;
-        case "id": return sortOrder === "asc" ? a.id - b.id : b.id - a.id;
-        case "buyer": return sortOrder === "asc" ? a.buyer.localeCompare(b.buyer) : b.buyer.localeCompare(a.buyer);
-        case "instagram": return sortOrder === "asc" ? a.instagram_handle.localeCompare(b.instagram_handle) : b.instagram_handle.localeCompare(a.instagram_handle);
-        case "dueDate": return sortOrder === "asc"
-          ? new Date(a.date_order_due).getTime() - new Date(b.date_order_due).getTime()
-          : new Date(b.date_order_due).getTime() - new Date(a.date_order_due).getTime();
+        case "date":
+          return sortOrder === "asc"
+            ? new Date(a.date_order_created).getTime() - new Date(b.date_order_created).getTime()
+            : new Date(b.date_order_created).getTime() - new Date(a.date_order_created).getTime();
+        case "revenue":
+          return sortOrder === "asc" ? a.total_revenue - b.total_revenue : b.total_revenue - a.total_revenue;
+        case "id":
+          return sortOrder === "asc" ? a.id - b.id : b.id - a.id;
+        case "buyer":
+          return sortOrder === "asc" ? a.buyer.localeCompare(b.buyer) : b.buyer.localeCompare(a.buyer);
+        case "instagram":
+          return sortOrder === "asc"
+            ? a.instagram_handle.localeCompare(b.instagram_handle)
+            : b.instagram_handle.localeCompare(a.instagram_handle);
+        case "dueDate":
+          return sortOrder === "asc"
+            ? new Date(a.date_order_due).getTime() - new Date(b.date_order_due).getTime()
+            : new Date(b.date_order_due).getTime() - new Date(a.date_order_due).getTime();
         default: return 0;
       }
     });
 
-    setFilteredOrders(filtered);
+    return filtered;
   }, [statusFilter, sortField, sortOrder, searchTerm, orders]);
+
+  const statusFilterKey = useMemo(() => statusFilter.join("|"), [statusFilter]);
+  const ordersKey = useMemo(() => orders.map(o => o.id).join("|"), [orders]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilterKey, sortField, sortOrder, searchTerm, ordersKey, pageSize]);
+
+  const visibleOrders = useMemo(() => filteredOrders.filter(order => !order.deleted), [filteredOrders]);
+  const totalPages = Math.max(1, Math.ceil(visibleOrders.length / pageSize));
+  const paginatedOrders = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return visibleOrders.slice(start, start + pageSize);
+  }, [visibleOrders, currentPage, pageSize]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -270,140 +312,34 @@ export default function AdminPage() {
   if (error) return <div className="p-6 text-red-600">{error}</div>;
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: "#a3dfff", padding: "0.5rem" }}>
-      {/* Navbar */}
-      <nav
-        style={{
-          position: "fixed",
-          top: 0,
-          left: 0,
-          width: "100%",
-          backgroundColor: "#56baf2",
-          color: "white",
-          padding: "0.75rem 1rem",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          boxShadow: "0 1px 3px rgba(0,0,0,0.12)",
-          zIndex: 1000,
-        }}
-      >
-        <h1 style={{ fontSize: "clamp(1.2rem, 4vw, 1.5rem)", fontWeight: "bold", cursor: "pointer" }} onClick={() => router.push("/home")}>
-          🍪 Rays Cookies
-        </h1>
-        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", justifyContent: "flex-end" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: "#f5e6d3", padding: "0.5rem" }}>
+      <Navbar isAdmin>
+        <>
           <button
             onClick={() => {
-              if (editMode) setOrders(backupOrders); 
+              if (editMode) setOrders(backupOrders);
               else setBackupOrders([...orders]);
               setEditMode(!editMode);
-            }}
-            style={{
-              padding: "0.5rem clamp(0.75rem, 2vw, 1rem)",
-              borderRadius: "0.5rem",
-              backgroundColor: editMode ? "#ef4444" : "#402b2c",
-              color: "white",
-              fontWeight: "bold",
-              cursor: "pointer",
-              fontSize: "clamp(0.8rem, 2vw, 0.95rem)",
-              transition: "background-color 0.15s, box-shadow 0.15s",
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = editMode ? "#dc2626" : "#3a2423";
-              e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.15)";
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = editMode ? "#ef4444" : "#402b2c";
-              e.currentTarget.style.boxShadow = "none";
             }}
           >
             {editMode ? "Exit Edit" : "Edit"}
           </button>
+
           {editMode && (
-            <button
-              onClick={handleApplyChanges}
-              style={{
-                padding: "0.5rem clamp(0.75rem, 2vw, 1rem)",
-                borderRadius: "0.5rem",
-                backgroundColor: "#10b981",
-                color: "white",
-                fontWeight: "bold",
-                fontSize: "clamp(0.8rem, 2vw, 0.95rem)",
-                cursor: "pointer",
-                transition: "background-color 0.15s, box-shadow 0.15s",
-              }}
-              onMouseEnter={e => {
-                e.currentTarget.style.backgroundColor = "#059669";
-                e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.15)";
-              }}
-              onMouseLeave={e => {
-                e.currentTarget.style.backgroundColor = "#10b981";
-                e.currentTarget.style.boxShadow = "none";
-              }}
-            >
+            <button onClick={handleApplyChanges}>
               Apply Changes
             </button>
           )}
-          <button
-            onClick={() => router.push("/order")}
-            style={{
-              padding: "0.5rem clamp(0.75rem, 2vw, 1rem)",
-              borderRadius: "0.5rem",
-              backgroundColor: "#10b981",
-              color: "white",
-              fontWeight: "bold",
-              fontSize: "clamp(0.8rem, 2vw, 0.95rem)",
-              cursor: "pointer",
-              transition: "background-color 0.15s, box-shadow 0.15s",
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = "#059669";
-              e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.15)";
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = "#10b981";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-            onMouseDown={e => {
-              e.currentTarget.style.backgroundColor = "#047857";
-            }}
-            onMouseUp={e => {
-              e.currentTarget.style.backgroundColor = "#059669";
-            }}
-          >
+
+          <button onClick={() => router.push("/order")}>
             + New Order
           </button>
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: "0.5rem clamp(0.75rem, 2vw, 1rem)",
-              borderRadius: "0.5rem",
-              backgroundColor: "#402b2c",
-              color: "white",
-              fontWeight: "bold",
-              fontSize: "clamp(0.8rem, 2vw, 0.95rem)",
-              cursor: "pointer",
-              transition: "background-color 0.15s, box-shadow 0.15s",
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = "#3a2423";
-              e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.15)";
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.backgroundColor = "#402b2c";
-              e.currentTarget.style.boxShadow = "none";
-            }}
-            onMouseDown={e => {
-              e.currentTarget.style.backgroundColor = "#2c1f20";
-            }}
-            onMouseUp={e => {
-              e.currentTarget.style.backgroundColor = "#3a2423";
-            }}
-          >
+
+          <button onClick={handleLogout}>
             Logout
           </button>
-        </div>
-      </nav>
+        </>
+      </Navbar>
 
       {/* Filters & Search */}
       <div
@@ -476,7 +412,7 @@ export default function AdminPage() {
       <span style={{ marginLeft: "auto" }}>▾</span>
     </button>
 
-    {statusDropdownOpen && (
+        {statusDropdownOpen && (
       <div
         style={{
           position: "absolute",
@@ -492,7 +428,7 @@ export default function AdminPage() {
           boxSizing: "border-box",
         }}
       >
-        {["Pending", "Confirmed", "Delivered"].map(status => (
+        {STATUS_OPTIONS.map(status => (
           <label
             key={status}
             style={{
@@ -610,7 +546,7 @@ export default function AdminPage() {
               </tr>
             </thead>
             <tbody>
-              {filteredOrders.filter(order => !order.deleted).map((order, index) => (
+              {paginatedOrders.map((order, index) => (
                 <React.Fragment key={order.id}>
                   <tr style={{ backgroundColor: index % 2 === 0 ? "#f9f9f9" : "white", transition: "background 0.15s" }}
                   onMouseEnter={e => e.currentTarget.style.backgroundColor = "#e9f6ff"}
@@ -636,16 +572,16 @@ export default function AdminPage() {
                       />
                     ) : order.instagram_handle}
                   </td>
-                  <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)" }}>{new Date(order.date_order_created).toLocaleDateString()}</td>
+                  <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)" }}>{formatDateLocal(order.date_order_created)}</td>
                   <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)" }}>
                     {editMode ? (
                       <input
                         type="date"
-                        value={new Date(order.date_order_due).toISOString().split("T")[0]}
+                        value={formatDateLocal(order.date_order_due) ? new Date(order.date_order_due).toISOString().split("T")[0] : (order.date_order_due || "")}
                         onChange={e => updateOrderField(order.id, "date_order_due", e.target.value)}
                         style={{ fontSize: "0.85rem" }}
                       />
-                    ) : new Date(order.date_order_due).toLocaleDateString()}
+                    ) : formatDateLocal(order.date_order_due)}
                   </td>
                   <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", textAlign: "center", fontSize: "clamp(0.7rem, 1.5vw, 0.9rem)" }}>{order.totalCookies}</td>
                   <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", textAlign: "center", fontSize: "clamp(0.7rem, 1.5vw, 0.9rem)" }}>
@@ -664,9 +600,11 @@ export default function AdminPage() {
                   <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", fontSize: "clamp(0.7rem, 1.5vw, 0.9rem)" }}>
                     {editMode ? (
                       <select value={order.status} onChange={e => updateOrderField(order.id, "status", e.target.value)} style={{ fontSize: "0.85rem" }}>
-                        <option value="Pending">Pending</option>
-                        <option value="Confirmed">Confirmed</option>
-                        <option value="Delivered">Delivered</option>
+                        {STATUS_OPTIONS.map(status => (
+                          <option key={status} value={status}>
+                            {status}
+                          </option>
+                        ))}
                       </select>
                     ) : order.status}
                   </td>
@@ -680,11 +618,11 @@ export default function AdminPage() {
                       />
                     ) : order.customization || "-"}
                   </td>
-                  <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", minWidth: "340px", whiteSpace: "normal", wordWrap: "break-word" }} colSpan={3}>
-                    {editMode ? (
+                  {editMode ? (
+                    <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", minWidth: "420px", whiteSpace: "normal", wordWrap: "break-word" }} colSpan={3}>
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                         {order.items.map((item, idx) => (
-                          <div key={`${item.flavour}-${item.size}-${idx}`} style={{ display: "grid", gridTemplateColumns: "1fr 90px 80px 32px", alignItems: "center", gap: "0.5rem", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)", marginBottom: idx < order.items.length - 1 ? "0.3rem" : 0 }}>
+                          <div key={`${item.flavour}-${item.size}-${idx}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px 120px 44px", alignItems: "center", gap: "0.5rem", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)", marginBottom: idx < order.items.length - 1 ? "0.3rem" : 0 }}>
                             <div style={{ overflowWrap: "break-word" }}>{item.flavour}</div>
                             <select
                               value={item.size || "Regular"}
@@ -697,7 +635,7 @@ export default function AdminPage() {
                                   return { ...o, items, totalCookies };
                                 }));
                               }}
-                              style={{ padding: "0.25rem", minWidth: "65px", fontSize: "0.85rem" }}
+                              style={{ padding: "0.25rem", width: "100%", fontSize: "0.85rem", textAlign: "center" }}
                             >
                               {["Small", "Regular", "Large"].map(size => {
                                 const isUsed = order.items.some(i => i.flavour === item.flavour && (i.size || "Regular") !== (item.size || "Regular") && i.size === size);
@@ -718,7 +656,7 @@ export default function AdminPage() {
                                 if (selected > remaining) return;
                                 updateItemQuantity(order.id, item.flavour, selected, item.size || "Regular");
                               }}
-                              style={{ padding: "0.25rem", minWidth: "50px", fontSize: "0.85rem" }}
+                              style={{ padding: "0.25rem", width: "100%", fontSize: "0.85rem", textAlign: "center" }}
                             >
                               {[5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100].map(q => {
                                 const totalQty = order.items.reduce((sum, i) => sum + i.quantity, 0);
@@ -782,18 +720,34 @@ export default function AdminPage() {
                           </div>
                         )}
                       </div>
-                    ) : (
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
-                        {order.items.map((item, idx) => (
-                          <div key={`${item.flavour}-${item.size}-${idx}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "0.5rem", alignItems: "center", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)", marginBottom: idx < order.items.length - 1 ? "0.3rem" : 0 }}>
-                            <div style={{ overflowWrap: "break-word", textAlign: "center" }}>{item.flavour}</div>
-                            <div style={{ textAlign: "center" }}>{item.size || "Regular"}</div>
-                            <div style={{ textAlign: "center" }}>{item.quantity}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </td>
+                    </td>
+                  ) : (
+                    <>
+                      <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", minWidth: "280px", whiteSpace: "normal", wordWrap: "break-word" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
+                          {order.items.map((item, idx) => (
+                            <div key={`${item.flavour}-${item.size}-${idx}`} style={{ textAlign: "center", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)", marginBottom: idx < order.items.length - 1 ? "0.3rem" : 0 }}>{item.flavour}</div>
+                          ))}
+                        </div>
+                      </td>
+
+                      <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", minWidth: "120px", textAlign: "center" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "center" }}>
+                          {order.items.map((item, idx) => (
+                            <div key={`${item.flavour}-size-${idx}`} style={{ textAlign: "center", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)", marginBottom: idx < order.items.length - 1 ? "0.3rem" : 0 }}>{item.size || "Regular"}</div>
+                          ))}
+                        </div>
+                      </td>
+
+                      <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", minWidth: "120px", textAlign: "center" }}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem", alignItems: "center" }}>
+                          {order.items.map((item, idx) => (
+                            <div key={`${item.flavour}-qty-${idx}`} style={{ textAlign: "center", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)", marginBottom: idx < order.items.length - 1 ? "0.3rem" : 0 }}>{item.quantity}</div>
+                          ))}
+                        </div>
+                      </td>
+                    </>
+                  )}
 
                   <td style={{ padding: "clamp(0.25rem, 1vw, 0.35rem)", verticalAlign: "middle", display: editMode ? "table-cell" : "none" }}>
                     {editMode && (
@@ -848,23 +802,83 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Summary */}
-      <div style={{ marginTop: "1rem", display: "flex", justifyContent: "center", gap: "1rem", flexWrap: "wrap", textAlign: "center" }}>
-        <div style={{ backgroundColor: "#f3f4f6", padding: "0.6rem 1rem", borderRadius: "0.6rem", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", minWidth: "120px" }}>
-          <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>Total Orders</div>
-          <div style={{ fontWeight: "bold", fontSize: "1rem", color: "#402b2c" }}>{filteredOrders.length}</div>
-        </div>
-        <div style={{ backgroundColor: "#f3f4f6", padding: "0.6rem 1rem", borderRadius: "0.6rem", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", minWidth: "120px" }}>
-          <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>Total Revenue</div>
-          <div style={{ fontWeight: "bold", fontSize: "1rem", color: "#402b2c" }}>
-            ${filteredOrders.reduce((sum, o) => sum + o.total_revenue, 0).toFixed(2)}
+      {/* Summary + Pagination: responsive layout */}
+      <div className="admin-summary" style={{ marginTop: "1rem", display: "flex", justifyContent: "center", padding: "0.25rem 0" }}>
+        <div className="admin-summary-inner" style={{ width: "100%", maxWidth: "95vw", boxSizing: "border-box" }}>
+          <div className="admin-totals" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center", alignItems: "center", marginBottom: "0.5rem" }}>
+            <div className="summary-card" style={{ backgroundColor: "#f3f4f6", padding: "0.6rem 1rem", borderRadius: "0.6rem", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", minWidth: "120px", textAlign: "center" }}>
+              <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>Total Orders</div>
+              <div style={{ fontWeight: "bold", fontSize: "1rem", color: "#402b2c" }}>{visibleOrders.length}</div>
+            </div>
+            <div className="summary-card" style={{ backgroundColor: "#f3f4f6", padding: "0.6rem 1rem", borderRadius: "0.6rem", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", minWidth: "120px", textAlign: "center" }}>
+              <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>Total Revenue</div>
+              <div style={{ fontWeight: "bold", fontSize: "1rem", color: "#402b2c" }}>
+                ${visibleOrders.reduce((sum, o) => sum + o.total_revenue, 0).toFixed(2)}
+              </div>
+            </div>
+            <div className="summary-card" style={{ backgroundColor: "#f3f4f6", padding: "0.6rem 1rem", borderRadius: "0.6rem", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", minWidth: "120px", textAlign: "center" }}>
+              <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>Total Cookies Sold</div>
+              <div style={{ fontWeight: "bold", fontSize: "1rem", color: "#402b2c" }}>
+                {visibleOrders.reduce((sum, o) => sum + o.totalCookies, 0)}
+              </div>
+            </div>
           </div>
-        </div>
-        <div style={{ backgroundColor: "#f3f4f6", padding: "0.6rem 1rem", borderRadius: "0.6rem", boxShadow: "0 1px 4px rgba(0,0,0,0.08)", minWidth: "120px" }}>
-          <div style={{ fontSize: "0.78rem", color: "#6b7280" }}>Total Cookies Sold</div>
-          <div style={{ fontWeight: "bold", fontSize: "1rem", color: "#402b2c" }}>
-            {filteredOrders.reduce((sum, o) => sum + o.totalCookies, 0)}
+
+          <div className="admin-pagination" style={{ display: "flex", justifyContent: "center" }}>
+            <div className="pagination-controls" style={{ display: "flex", alignItems: "center", gap: "0.5rem", padding: "0.45rem 0.6rem", backgroundColor: "white", borderRadius: "0.75rem", boxShadow: "0 8px 30px rgba(2,6,23,0.06)", border: "1px solid rgba(59,130,246,0.06)", minWidth: "260px", maxWidth: "92vw" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <label style={{ fontSize: "0.85rem", color: "#374151" }}>Show</label>
+                <select
+                  value={pageSize}
+                  onChange={e => { setPageSize(Number(e.target.value)); setCurrentPage(1); }}
+                  style={{ padding: "0.28rem 0.45rem", borderRadius: "0.375rem", border: "1px solid #e6eef6", fontSize: "0.85rem", cursor: "pointer", background: "white" }}
+                >
+                  <option value={10}>10</option>
+                  <option value={20}>20</option>
+                  <option value={50}>50</option>
+                  <option value={100}>100</option>
+                </select>
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                style={{
+                  padding: "0.35rem 0.6rem",
+                  borderRadius: "0.45rem",
+                  backgroundColor: currentPage === 1 ? "#f3f4f6" : "#374151",
+                  color: currentPage === 1 ? "#9ca3af" : "white",
+                  border: "none",
+                  cursor: currentPage === 1 ? "not-allowed" : "pointer",
+                  fontSize: "0.85rem",
+                }}
+              >
+                ‹
+              </button>
+
+              <div style={{ fontSize: "0.85rem", color: "#374151", minWidth: "88px", textAlign: "center" }}>
+                Page {currentPage} / {totalPages}
+              </div>
+
+              <button
+                onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                disabled={currentPage >= totalPages}
+                style={{
+                  padding: "0.35rem 0.6rem",
+                  borderRadius: "0.45rem",
+                  backgroundColor: currentPage >= totalPages ? "#f3f4f6" : "#374151",
+                  color: currentPage >= totalPages ? "#9ca3af" : "white",
+                  border: "none",
+                  cursor: currentPage >= totalPages ? "not-allowed" : "pointer",
+                  fontSize: "0.85rem",
+                }}
+              >
+                ›
+              </button>
+            </div>
           </div>
+
+          <style>{`\n            .admin-summary-inner { position: relative; }\n            @media (max-width: 720px) {\n              .admin-summary-inner { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }\n              .admin-pagination .pagination-controls { width: 100%; justify-content: space-between; }\n              .summary-card { min-width: 100px; }\n            }\n            @media (min-width: 721px) {\n              .admin-summary-inner { display: block; }\n              .admin-totals { position: static; transform: none; }\n              .admin-pagination { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }\n            }\n          `}</style>
         </div>
       </div>
 
