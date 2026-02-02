@@ -126,12 +126,312 @@
   }
 }
 
+/* Push content below the fixed navbar (consistent gap across sizes) */
+.page-with-fixed-nav {
+  padding-top: calc(72px + env(safe-area-inset-top));
+}
+
+.hero-grid {
+  display: grid;
+  /* narrower columns so images are smaller and text gets priority */
+  grid-template-columns: minmax(220px, 1fr) minmax(140px, 0.65fr);
+  gap: 0.4rem;
+  align-items: start;
+}
+
+.hero-copy {
+  min-width: 0;
+}
+
+.hero-media {
+  display: grid;
+  grid-template-columns: 1fr 0.9fr;
+  grid-template-rows: auto auto;
+  gap: 0.3rem;
+  width: 100%;
+  max-width: 340px;
+  justify-self: end;
+  /* treat the media cluster as a single rounded card so its left edge is curved */
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 12px 34px rgba(2, 6, 23, 0.08);
+}
+
+.hero-tile {
+  /* tiles no longer round themselves — the cluster provides the rounding */
+  border-radius: 0;
+  overflow: hidden;
+  box-shadow: none;
+  background: #f8fafc;
+}
+
+.hero-tile--large {
+  grid-row: 1 / span 2;
+  aspect-ratio: 4 / 5;
+  /* reduce large tile size further */
+  min-height: clamp(90px, 12vw, 160px);
+}
+.hero-tile--small {
+  aspect-ratio: 16 / 10;
+  min-height: clamp(42px, 5.5vw, 72px);
+}
+
+.hero-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Prevent overlapping by ensuring grid rows are sized and tiles fill them */
+.hero-media {
+  align-items: start;
+  grid-auto-rows: minmax(80px, auto);
+  overflow: hidden;
+  box-sizing: border-box;
+}
+
+.hero-tile {
+  height: 100%;
+  display: block;
+}
+
+/* Ensure images never overflow their tiles */
+.hero-img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+/* Make sure anchored sections aren't covered by fixed nav.
+   Use a safe default plus the device safe-area inset for notches.
+   Increase the offset on small screens to ensure the section sits below the fixed nav. */
+#menu-section {
+  /* default nav height (desktop) + safe-area inset if present */
+  scroll-margin-top: calc(72px + env(safe-area-inset-top));
+}
+
+@media (max-width: 920px) {
+  /* mobile/tablet: nav can be taller or include a notch — give extra breathing room */
+  #menu-section {
+    scroll-margin-top: calc(92px + env(safe-area-inset-top)) !important;
+  }
+}
+
+/* global fallback for browsers that support scroll-padding */
+:root {
+  scroll-padding-top: calc(72px + env(safe-area-inset-top));
+}
+
+/* Tighter mobile sizes for stacked images */
+@media (max-width: 480px) {
+  .hero-tile--large {
+    min-height: clamp(62px, 20vw, 92px) !important;
+  }
+  .hero-tile--small {
+    min-height: clamp(36px, 9vw, 56px) !important;
+  }
+  .hero-media {
+    max-width: 100% !important;
+    gap: 0.25rem !important;
+  }
+}
+
 @media (max-width: 720px) {
   .hero {
-    padding: 1.5rem 1rem 0.75rem !important;
+    padding: 1rem 0.75rem 0.5rem !important;
   }
   .hero-card {
-    padding: 1rem !important;
+    padding: 0.75rem !important;
+  }
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.75rem !important;
+  }
+  .hero-media {
+    max-width: 100% !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-rows: auto auto !important;
+    gap: 0.35rem !important;
+  }
+  .hero-tile--large {
+    grid-column: 1 / -1;
+    aspect-ratio: 16 / 9;
+    min-height: clamp(90px, 24vw, 130px);
+  }
+  .hero-tile--small {
+    aspect-ratio: 4 / 3;
+    min-height: clamp(56px, 12vw, 82px);
+  }
+}
+
+/* Navbar responsive tweaks: allow wrapping and smaller sizing on narrow screens */
+@media (max-width: 720px) {
+  nav {
+    height: auto !important;
+    padding: 0.5rem 0.75rem !important;
+    align-items: center !important;
+  }
+  /* hide the desktop nav actions and show a toggle instead */
+  .nav-actions {
+    display: none !important;
+  }
+  .nav-toggle {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+  }
+  nav h1 {
+    font-size: 1.1rem !important;
+  }
+  .page-with-fixed-nav {
+    padding-top: calc(56px + env(safe-area-inset-top));
+  }
+
+  .flavour-modal {
+    align-items: center;
+    padding: 1rem 0.75rem;
+  }
+
+  .flavour-modal-card {
+    width: 100%;
+    max-width: 520px;
+    max-height: calc(100vh - 2.5rem);
+    display: grid;
+    grid-template-columns: 1fr;
+    border-radius: 18px;
+    min-height: 0;
+  }
+
+  .flavour-modal-media {
+    width: 100% !important;
+    min-width: 100% !important;
+    min-height: 110px;
+    height: 110px;
+  }
+
+  .flavour-modal-body {
+    padding: 1rem 1.1rem 1.25rem;
+    flex: 1;
+    min-height: 0;
+    max-height: calc(100vh - 2.5rem - 110px);
+    overflow-y: auto;
+  }
+
+  /* stronger mobile guard: ensure modal is fully visible and stacked */
+  .flavour-modal-card {
+    box-sizing: border-box;
+    width: calc(100% - 32px) !important;
+    margin: 0 16px !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+  }
+
+  .flavour-modal-media {
+    height: 100px !important;
+    min-height: 100px !important;
+  }
+
+  .flavour-modal-body {
+    max-height: calc(100vh - 2.5rem - 100px) !important;
+    padding-bottom: 1.5rem !important;
+  }
+
+  /* Ensure stacking order explicitly on small screens */
+  .flavour-modal-media {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+  .flavour-modal-body {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+
+/* drawer button styles */
+.nav-drawer button {
+  font-size: 15px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+/* flavour modal default (desktop) layout */
+.flavour-modal-card {
+  display: grid;
+  /* allow the media column to grow more on wide screens to reduce empty text whitespace */
+  grid-template-columns: minmax(240px, 420px) 1fr;
+  align-items: start;
+  overflow: hidden;
+  gap: 0;
+}
+
+/* Mobile: improve typography and CTA stacking */
+@media (max-width: 480px) {
+  .hero-card {
+    padding: 0.9rem !important;
+    border-radius: 12px !important;
+  }
+  .hero-copy h2 {
+    font-size: 1.6rem !important;
+    line-height: 1.05 !important;
+  }
+  .hero-copy p {
+    font-size: 0.98rem !important;
+    margin-top: 0.45rem !important;
+  }
+  /* Make CTAs full width and stacked for easier tapping */
+  .hero-copy .cta-primary,
+  .hero-copy .cta-secondary {
+    display: block !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    text-align: center !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+    font-size: 15px !important;
+  }
+  .hero-copy .cta-primary {
+    margin-bottom: 0.6rem !important;
+    padding: 0.9rem 0.6rem !important;
+    border-radius: 12px !important;
+  }
+  .hero-copy .cta-secondary {
+    padding: 0.75rem 0.6rem !important;
+    border-radius: 12px !important;
+    background: white !important;
+  }
+  /* Center and stretch media under the copy */
+  .hero-media {
+    justify-self: stretch !important;
+    align-items: center !important;
+    width: 100% !important;
+  }
+  .hero-tile--large {
+    min-height: clamp(90px, 26vw, 120px) !important;
+  }
+}
+
+/* At intermediate widths, stack media under copy to avoid images colliding with text */
+@media (max-width: 920px) {
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 0.6rem !important;
+  }
+  .hero-media {
+    grid-column: 1 / -1 !important;
+    max-width: 100% !important;
+    justify-self: stretch !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 0.35rem !important;
+  }
+  .hero-tile--large {
+    grid-column: 1 / -1 !important;
+    aspect-ratio: 16 / 9 !important;
+    min-height: clamp(78px, 20vw, 112px) !important;
+  }
+  .hero-tile--small {
+    aspect-ratio: 4 / 3 !important;
+    min-height: clamp(40px, 9vw, 62px) !important;
   }
 }
 

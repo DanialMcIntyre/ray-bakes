@@ -16,11 +16,13 @@ export default function HomePage() {
   const [showReportPopup, setShowReportPopup] = useState(false);
   const [showContactPopup, setShowContactPopup] = useState(false);
 
-  const HoverButton: React.FC<React.PropsWithChildren<{ onClick?: () => void; style?: React.CSSProperties }>> = ({ children, onClick, style }) => {
+  const HoverButton: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement>> = ({ children, onClick, style, className, ...rest }) => {
     const [hover, setHover] = useState(false);
     return (
       <button
+        {...rest}
         onClick={onClick}
+        className={className}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
         style={{
@@ -88,46 +90,66 @@ export default function HomePage() {
     };
   }, [flavours]);
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: 'var(--page-bg)' }}>
+    <div className="page-with-fixed-nav" style={{ minHeight: "100vh", backgroundColor: 'var(--page-bg)' }}>
       <Navbar />
 
-      <header style={{ padding: "6.5rem 1.25rem 2rem", display: "flex", justifyContent: "center" }}>
-        <div style={{ width: "100%", maxWidth: 1100, borderRadius: 16, overflow: "visible", boxShadow: "0 12px 30px rgba(2,6,23,0.08)", background: "linear-gradient(135deg,#f8fbff 0%, #ffffff 40%, #e6f9ff 100%)", padding: "2.25rem" }}>
-          <div style={{ display: "flex", gap: "2rem", alignItems: "center", flexWrap: "wrap" }}>
-            <div style={{ flex: "1 1 380px", minWidth: 280, overflow: "visible" }}>
-              <h2 style={{ fontSize: "2rem", margin: 0, color: "#402b2c" }}>Fresh cookies, made to order</h2>
-              <p style={{ marginTop: "0.75rem", color: "#374151", fontSize: "1rem", maxWidth: 560 }}>Small-batch, hand-decorated cookies baked daily. Browse flavours, choose sizes, and schedule a pickup — it’s that simple.</p>
+      <header className="hero" style={{ padding: "2.25rem 1.25rem 1rem", display: "flex", justifyContent: "center" }}>
+        <div className="hero-card" style={{ width: "100%", maxWidth: 1100, borderRadius: 16, overflow: "hidden", boxShadow: "0 12px 30px rgba(2,6,23,0.08)", background: "linear-gradient(135deg,#f8fbff 0%, #ffffff 40%, #e6f9ff 100%)", padding: "1.5rem" }}>
+          <div
+            className="hero-grid"
+            style={{
+              display: 'flex',
+              gap: '2rem',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap'
+            }}
+          >
+            <div className="hero-copy" style={{ minWidth: 0, flex: '1 1 480px', overflow: 'visible' }}>
+              <h2 style={{ fontSize: '3rem', lineHeight: 1.03, margin: 0, color: '#402b2c', fontWeight: 800 }}>Fresh cookies, made to order</h2>
+              <p style={{ marginTop: '0.8rem', color: '#374151', fontSize: '1.125rem', maxWidth: 560 }}>Small-batch, hand-decorated cookies baked daily. Browse flavours, choose sizes, and schedule a pickup — it’s that simple.</p>
 
-              <div style={{ marginTop: "1.25rem", display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
-                  <HoverButton onClick={() => router.push('/order')} style={{ background: "linear-gradient(90deg,#6366f1,#06b6d4)", color: "white", padding: "0.6rem 1rem", borderRadius: 12, border: "none", fontWeight: 700, boxShadow: "0 6px 12px rgba(6,182,212,0.12)", zIndex: 2 }}>Order Now</HoverButton>
-                  <HoverButton onClick={() => {
-                    const el = document.getElementById('menu-section');
-                    const NAV_OFFSET = 72;
+              <div style={{ marginTop: '1.6rem', display: 'flex', gap: '0.9rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <HoverButton className="cta-primary" onClick={() => router.push('/order')} style={{ background: 'linear-gradient(90deg,#5b21b6,#06b6d4)', color: 'white', padding: '0.9rem 1.25rem', borderRadius: 999, border: 'none', fontWeight: 800, fontSize: 16, boxShadow: '0 12px 30px rgba(6,182,212,0.12)', zIndex: 2 }}>Order Now</HoverButton>
+                <HoverButton className="cta-secondary" onClick={() => {
+                  const el = document.getElementById('menu-section');
                     if (el) {
-                      const y = el.getBoundingClientRect().top + window.scrollY - NAV_OFFSET;
+                      const nav = document.querySelector('nav');
+                      const navRect = nav ? (nav as HTMLElement).getBoundingClientRect() : null;
+                      const navBottom = navRect ? navRect.bottom : ((nav && (nav as HTMLElement).offsetHeight) || 72);
+                      const extraOffset = 8;
+                      const y = el.getBoundingClientRect().top + window.scrollY - navBottom - extraOffset;
                       window.scrollTo({ top: y, behavior: 'smooth' });
-                      // add temporary highlight
                       el.classList.add('highlight');
                       window.setTimeout(() => el.classList.remove('highlight'), 2400);
-                    }
-                  }} style={{ background: "transparent", border: "1px solid rgba(15,23,42,0.06)", padding: "0.55rem 0.9rem", borderRadius: 12, fontWeight: 600 }}>See Menu</HoverButton>
+                  }
+                }} style={{ background: 'white', border: '1px solid rgba(15,23,42,0.06)', padding: '0.7rem 1rem', borderRadius: 999, fontWeight: 700 }}>See Menu</HoverButton>
               </div>
             </div>
 
-            <div style={{ flex: "0 0 320px", display: "grid", gridTemplateColumns: "1fr", gap: "0.75rem" }}>
-              <div style={{ height: 140, borderRadius: 12, background: "#fff url('/cookies/cookies1.jpg') center/cover no-repeat", boxShadow: "0 8px 20px rgba(2,6,23,0.06)" }} />
-              <div style={{ display: "flex", gap: "0.5rem" }}>
-                <div style={{ flex: 1, height: 70, borderRadius: 10, background: "#fff url('/cookies/cookies2.jpg') center/cover no-repeat", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" }} />
-                <div style={{ flex: 1, height: 70, borderRadius: 10, background: "#fff url('/cookies/cookies3.jpeg') center/cover no-repeat", boxShadow: "0 6px 16px rgba(2,6,23,0.06)" }} />
+            <div className="hero-media" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', flex: '0 0 420px', alignItems: 'flex-end' }}>
+              <div className="hero-tile hero-tile--large" style={{ width: 420, height: 220, borderRadius: 14, overflow: 'hidden', boxShadow: '0 12px 34px rgba(2,6,23,0.08)' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src="/cookies/cookies1.jpg" alt="cookies" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+              </div>
+              <div style={{ display: 'flex', gap: '0.85rem', width: 420 }}>
+                <div className="hero-tile hero-tile--small" style={{ width: '50%', height: 96, borderRadius: 12, overflow: 'hidden', boxShadow: '0 8px 24px rgba(2,6,23,0.06)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/cookies/cookies2.jpg" alt="cookies" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </div>
+                <div className="hero-tile hero-tile--small" style={{ width: '50%', height: 96, borderRadius: 12, overflow: 'hidden', boxShadow: '0 8px 24px rgba(2,6,23,0.06)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src="/cookies/cookies3.jpeg" alt="cookies" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                </div>
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      <main style={{ padding: "1rem 1.25rem 3rem" }}>
+      <main style={{ padding: "1rem 1.25rem 1.25rem" }}>
         <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto" }}>
-          <section id="menu-section" style={{ marginBottom: "1.5rem" }}>
+          <section id="menu-section" style={{ marginBottom: "0.75rem" }}>
             <h3 style={{ margin: "0 0 0.25rem 0", color: "#0f172a", fontSize: '1.25rem', letterSpacing: '0.2px', display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ display: 'inline-block', padding: '0.35rem 0.8rem', background: '#fde68a', borderRadius: 10, fontSize: '0.95rem', color: '#92400e', fontWeight: 800 }}>Menu</span>
               <span style={{ color: '#0f172a', fontWeight: 800, fontSize: 18 }}>All Flavours</span>
@@ -228,18 +250,20 @@ export default function HomePage() {
           </section>
             {modalOpen && selected && (
               <div
+                className="flavour-modal"
                 style={{ position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1200, backdropFilter: 'blur(3px)' }}
                 onClick={() => setModalOpen(false)}
               >
                 <div
+                  className="flavour-modal-card"
                   onClick={(e) => e.stopPropagation()}
-                  style={{ background: 'white', padding: '0', borderRadius: 16, width: 'min(920px, 96vw)', boxShadow: '0 30px 60px rgba(2,6,23,0.18)', overflow: 'hidden', display: 'flex', flexDirection: 'row', backgroundClip: 'padding-box' }}
+                  style={{ background: 'white', padding: '0', borderRadius: 16, width: 'min(820px, 90vw)', boxShadow: '0 30px 60px rgba(2,6,23,0.18)', overflow: 'hidden', backgroundClip: 'padding-box' }}
                 >
                   <div
+                    className="flavour-modal-media"
                     style={{
-                      width: 320,
-                      minWidth: 240,
-                      minHeight: 420,
+                      width: '100%',
+                      minHeight: 480,
                       backgroundColor: '#f9fafb',
                       display: 'flex',
                       alignItems: 'stretch',
@@ -262,7 +286,7 @@ export default function HomePage() {
                     />
                   </div>
 
-                  <div style={{ padding: '1.25rem 1.5rem', flex: 1 }}>
+                  <div className="flavour-modal-body" style={{ padding: '1.25rem 1.5rem', flex: 1 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 12 }}>
                       <div>
                         <h2 style={{ margin: 0, fontSize: 22, color: '#0f172a', fontWeight: 800 }}>{selected.name}</h2>
@@ -300,7 +324,7 @@ export default function HomePage() {
         </div>
       </main>
 
-          <footer style={{ borderTop: "1px solid rgba(2,6,23,0.04)", padding: "1rem", marginTop: "2rem" }}>
+          <footer style={{ borderTop: "1px solid rgba(2,6,23,0.04)", padding: "1rem", marginTop: "1rem" }}>
         <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", color: "#475569" }}>
           <div>© {new Date().getFullYear()} Ray's Cookies</div>
           <div style={{ display: "flex", gap: "1rem" }}>
