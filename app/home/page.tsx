@@ -3,13 +3,24 @@
 import { useRouter } from "next/navigation";
 import React, { useState, useRef, useEffect } from "react";
 import Navbar from "@/components/ui/navbar";
-import flavoursList from "@/lib/flavours";
+// menu items fetched from DB; remove hard-coded flavour list import
+import { supabase } from "@/lib/supabaseClient";
+
+type MenuItem = {
+  id?: number;
+  flavour: string;
+  description?: string | null;
+  ingredients?: string | null;
+  image_path?: string | null;
+  hidden?: boolean | null;
+};
 
 export default function HomePage() {
   const router = useRouter();
   const [modalOpen, setModalOpen] = useState(false);
-  const [selected, setSelected] = useState<{ name: string; desc?: string; ingredients?: string; image?: string } | null>(null);
-  const flavours = flavoursList;
+  const [selected, setSelected] = useState<{ name: string; desc?: string; ingredients?: string; imagePath?: string } | null>(null);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const flavours: MenuItem[] = menuItems.filter((item) => !item.hidden);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
@@ -69,8 +80,13 @@ export default function HomePage() {
     );
   };
 
-  const openModal = (f: { flavour: string; description?: string; ingredients?: string }) => {
-    setSelected({ name: f.flavour, desc: f.description, ingredients: f.ingredients, image: (f as any).image });
+  const openModal = (f: { flavour: string; description?: string | null; ingredients?: string | null; image_path?: string | null }) => {
+    setSelected({
+      name: f.flavour,
+      desc: f.description ?? undefined,
+      ingredients: f.ingredients ?? undefined,
+      imagePath: f.image_path ?? undefined,
+    });
     setModalOpen(true);
   };
 
@@ -89,6 +105,41 @@ export default function HomePage() {
       el.removeEventListener('scroll', check);
     };
   }, [flavours]);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadMenuItems = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("menu")
+          .select("id, flavour, description, ingredients, image_path, hidden")
+          .order("flavour", { ascending: true });
+
+        if (error || !data) {
+          console.error("Failed to load menu items (query error)", error);
+          // ensure we keep using the bundled flavours fallback
+          if (mounted) setMenuItems([]);
+          return;
+        }
+        if (!mounted) return;
+        setMenuItems(data as MenuItem[]);
+      } catch (err: unknown) {
+        // Error objects sometimes have non-enumerable properties; print them explicitly
+        try {
+          const printable = err && typeof err === 'object' ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : String(err);
+          console.error("Failed to load menu items (exception)", printable);
+        } catch (e) {
+          console.error("Failed to load menu items", err);
+        }
+        if (mounted) setMenuItems([]);
+      }
+    };
+
+    loadMenuItems();
+    return () => {
+      mounted = false;
+    };
+  }, []);
   return (
     <div className="page-with-fixed-nav" style={{ minHeight: "100vh", backgroundColor: 'var(--page-bg)' }}>
       <Navbar />
@@ -168,41 +219,57 @@ export default function HomePage() {
                   setCanScrollRight(el.scrollWidth - el.clientWidth - el.scrollLeft > 8);
                 }}
               >
-                {flavours.map((f) => (
-                <div
-                  key={f.flavour}
-                  onClick={() => openModal(f)}
-                  style={{
-                    width: 360,
-                    height: 160,
-                    background: 'white',
-                    padding: '1.25rem',
-                    borderRadius: 14,
-                    boxShadow: '0 8px 20px rgba(2,6,23,0.04)',
-                    display: 'flex',
-                    gap: '1rem',
-                    alignItems: 'center',
-                    cursor: 'pointer',
-                    transition: 'box-shadow 0.12s, transform 0.12s',
-                    flex: '0 0 auto',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-4px)')}
-                  onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
-                >
-                  <div style={{ width: 120, height: 120, borderRadius: 12, overflow: 'hidden', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {f.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={f.image} alt={f.flavour} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ fontWeight: 700, fontSize: 28 }}>{(f.flavour || '')[0]}</div>
-                    )}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 18 }}>{f.flavour}</div>
-                    <div style={{ color: '#475569', fontSize: '1rem', marginTop: 8, maxHeight: 64, overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.description}</div>
-                  </div>
-                </div>
-              ))}
+                {flavours.length === 0 ? (
+                  <div style={{ padding: '1rem', color: '#6b7280' }}>No flavours available. Please check back later or ask an admin to add menu items.</div>
+                ) : (
+                  flavours.map((f) => (
+                    <div
+                      key={f.flavour}
+                      onClick={() => openModal(f)}
+                      style={{
+                        width: 360,
+                        height: 160,
+                        background: 'white',
+                        padding: '1.25rem',
+                        borderRadius: 14,
+                        boxShadow: '0 8px 20px rgba(2,6,23,0.04)',
+                        display: 'flex',
+                        gap: '1rem',
+                        alignItems: 'center',
+                        cursor: 'pointer',
+                        transition: 'box-shadow 0.12s, transform 0.12s',
+                        flex: '0 0 auto',
+                      }}
+                      onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-4px)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
+                    >
+                      <div style={{ width: 120, height: 120, borderRadius: 12, overflow: 'hidden', background: '#f9fafb', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {f.image_path ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={f.image_path} alt={f.flavour} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ fontWeight: 700, fontSize: 28 }}>{(f.flavour || '')[0]}</div>
+                        )}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 18 }}>{f.flavour}</div>
+                        <div
+                          style={{
+                            color: '#475569',
+                            fontSize: '1rem',
+                            marginTop: 8,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 3,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                          }}
+                        >
+                          {f.description}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* left gradient + chevron (always visible, dim when not scrollable) */}
@@ -263,18 +330,20 @@ export default function HomePage() {
                     className="flavour-modal-media"
                     style={{
                       width: '100%',
-                      minHeight: 480,
+                      minHeight: 'clamp(240px, 45vh, 420px)',
+                      height: '100%',
                       backgroundColor: '#f9fafb',
                       display: 'flex',
                       alignItems: 'stretch',
                       justifyContent: 'center',
                       overflow: 'hidden',
-                      position: 'relative'
+                      position: 'relative',
+                      alignSelf: 'stretch'
                     }}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={selected.image ?? '/cookies/birthday.jpg'}
+                      src={selected.imagePath ?? '/cookies/birthday.jpg'}
                       alt={selected.name}
                       style={{
                         position: 'absolute',

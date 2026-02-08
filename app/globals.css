@@ -264,6 +264,25 @@
   }
 }
 
+@media (max-width: 640px) {
+  .menu-item-card {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+  }
+  .menu-item-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 0.6rem !important;
+  }
+  .menu-item-actions {
+    flex-direction: row !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 0.5rem !important;
+  }
+}
+
 /* Navbar responsive tweaks: allow wrapping and smaller sizing on narrow screens */
 @media (max-width: 720px) {
   nav {
@@ -355,12 +374,31 @@
   text-align: left;
 }
 
+  /* Global button hover effect for consistency */
+  button[data-slot="button"], button, .nav-drawer button {
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.12s ease;
+  }
+  button[data-slot="button"]:hover, button:hover, .nav-drawer button:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 10px 30px rgba(2,6,23,0.08);
+  }
+
+  /* Ensure destructive variant buttons are clearly visible across themes */
+  button[data-variant="destructive"], [data-slot="button"][data-variant="destructive"] {
+    background: var(--color-destructive) !important;
+    color: white !important;
+    border: none !important;
+  }
+  button[data-variant="destructive"]:hover, [data-slot="button"][data-variant="destructive"]:hover {
+    filter: brightness(0.94);
+  }
+
 /* flavour modal default (desktop) layout */
 .flavour-modal-card {
   display: grid;
   /* allow the media column to grow more on wide screens to reduce empty text whitespace */
   grid-template-columns: minmax(240px, 420px) 1fr;
-  align-items: start;
+  align-items: stretch;
   overflow: hidden;
   gap: 0;
 }

@@ -183,40 +183,7 @@ export default function Navbar({ isAdmin = false, children }: NavbarProps) {
       });
     }
 
-    // Default fallback actions when no children provided
-    if (mobile) {
-      return (
-        <button onClick={() => { setIsMenuOpen(false); router.push('/order'); }} style={{ padding: '0.75rem 0.9rem', border: 'none', background: 'transparent', color: '#0f172a', borderRadius: 8, fontWeight: 700, textAlign: 'left', width: '100%' }}>
-          Make Order
-        </button>
-      );
-    }
-
-    return (
-      <>
-        <button
-          onClick={() => router.push('/order')}
-          style={primaryLinkStyle}
-          data-original-style={styleObjToCss(primaryLinkStyle as any)}
-          onMouseEnter={(e) => {
-            const el = e.currentTarget as HTMLElement;
-            if (!el.dataset.originalStyle) storeOriginal(el, primaryLinkStyle as any);
-            applyHover(el);
-          }}
-          onMouseLeave={(e) => {
-            applyLeave(e.currentTarget);
-          }}
-          onMouseDown={(e) => {
-            const el = e.currentTarget as HTMLElement;
-            if (!el.dataset.originalStyle) storeOriginal(el, primaryLinkStyle as any);
-            applyDown(el);
-          }}
-          onMouseUp={(e) => applyUp(e.currentTarget)}
-        >
-          Make Order
-        </button>
-      </>
-    );
+    return null;
   };
 
   return (
@@ -255,7 +222,28 @@ export default function Navbar({ isAdmin = false, children }: NavbarProps) {
 
       <div className="nav-actions" style={{ display: "flex", gap: "0.75rem", alignItems: "center", height: "100%" }}>
         {renderActions(false)}
-        {((pathname === "/" || pathname === "/home") && (isAdmin || sessionIsPresent)) && (
+        <button
+          onClick={() => router.push('/order')}
+          style={primaryLinkStyle}
+          data-original-style={styleObjToCss(primaryLinkStyle as any)}
+          onMouseEnter={(e) => {
+            const el = e.currentTarget as HTMLElement;
+            if (!el.dataset.originalStyle) storeOriginal(el, primaryLinkStyle as any);
+            applyHover(el);
+          }}
+          onMouseLeave={(e) => {
+            applyLeave(e.currentTarget);
+          }}
+          onMouseDown={(e) => {
+            const el = e.currentTarget as HTMLElement;
+            if (!el.dataset.originalStyle) storeOriginal(el, primaryLinkStyle as any);
+            applyDown(el);
+          }}
+          onMouseUp={(e) => applyUp(e.currentTarget)}
+        >
+          Make Order
+        </button>
+        {(isAdmin || sessionIsPresent) && (
           <button
             onClick={() => router.push("/admin")}
             style={neutralLinkStyle}
@@ -274,6 +262,27 @@ export default function Navbar({ isAdmin = false, children }: NavbarProps) {
             onMouseUp={(e) => applyUp(e.currentTarget)}
           >
             Admin
+          </button>
+        )}
+        {(isAdmin || sessionIsPresent) && (
+          <button
+            onClick={() => router.push("/manage-menu")}
+            style={neutralLinkStyle}
+            data-original-style={styleObjToCss(neutralLinkStyle as any)}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              if (!el.dataset.originalStyle) storeOriginal(el, neutralLinkStyle as any);
+              applyHover(el);
+            }}
+            onMouseLeave={(e) => applyLeave(e.currentTarget)}
+            onMouseDown={(e) => {
+              const el = e.currentTarget as HTMLElement;
+              if (!el.dataset.originalStyle) storeOriginal(el, neutralLinkStyle as any);
+              applyDown(el);
+            }}
+            onMouseUp={(e) => applyUp(e.currentTarget)}
+          >
+            Manage Menu
           </button>
         )}
         {sessionIsPresent && (
@@ -328,8 +337,14 @@ export default function Navbar({ isAdmin = false, children }: NavbarProps) {
           <div style={{ background: 'white', borderRadius: 12, boxShadow: '0 12px 40px rgba(2,6,23,0.12)', overflow: 'hidden' }}>
             <div style={{ display: 'flex', flexDirection: 'column', padding: '0.5rem' }}>
               {renderActions(true)}
-              {((pathname === '/' || pathname === '/home') && (isAdmin || sessionIsPresent)) && (
+              <button onClick={() => { setIsMenuOpen(false); router.push('/order'); }} style={{ padding: '0.75rem 0.9rem', border: 'none', background: 'transparent', color: '#0f172a', textAlign: 'left', borderRadius: 8, fontWeight: 700 }}>Make Order</button>
+              {(isAdmin || sessionIsPresent) && (
                 <button onClick={() => { setIsMenuOpen(false); router.push('/admin'); }} style={{ padding: '0.75rem 0.9rem', border: 'none', background: 'transparent', color: '#0f172a', textAlign: 'left', borderRadius: 8, fontWeight: 700 }}>Admin</button>
+              )}
+              {(isAdmin || sessionIsPresent) && (
+                <button onClick={() => { setIsMenuOpen(false); router.push('/manage-menu'); }} style={{ padding: '0.75rem 0.9rem', border: 'none', background: 'transparent', color: '#0f172a', textAlign: 'left', borderRadius: 8, fontWeight: 700 }}>
+                  Manage Menu
+                </button>
               )}
               {sessionIsPresent && (
                 <button onClick={async () => { setIsMenuOpen(false); try { await supabase.auth.signOut(); } finally { router.push('/login'); } }} style={{ padding: '0.75rem 0.9rem', border: 'none', background: 'transparent', color: '#0f172a', textAlign: 'left', borderRadius: 8, fontWeight: 700 }}>Logout</button>

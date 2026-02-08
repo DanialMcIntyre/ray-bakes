@@ -42,20 +42,7 @@ export default function LoginPage() {
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: 'var(--page-bg)' }}>
-      <Navbar>
-        <>
-          <button
-            onClick={() => router.push("/home")}
-          >
-            Home
-          </button>
-          <button
-            onClick={() => router.push("/order")}
-          >
-            Make Order
-          </button>
-        </>
-      </Navbar>
+      <Navbar />
 
       {/* LOGIN FORM */}
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", paddingTop: "4rem" }}>

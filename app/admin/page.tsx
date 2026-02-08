@@ -9,6 +9,7 @@ const STATUS_OPTIONS = ["Pending", "Confirmed", "Delivered"] as const;
 
 interface OrderItem {
   flavour: string;
+  flavour_id?: number | null;
   quantity: number;
   size: "Small" | "Regular" | "Large";
 }
@@ -49,12 +50,62 @@ export default function AdminPage() {
   const [showDeleteSuccess, setShowDeleteSuccess] = useState<boolean>(false);
     const [deletedOrderId, setDeletedOrderId] = useState<number | null>(null);
     const [allFlavours, setAllFlavours] = useState<string[]>([]);
+  // Calendar state for admin view
+  const [calendarMonth, setCalendarMonth] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+  const statusColor = (s: Status) => {
+    switch (s) {
+      case "Pending": return "#f59e0b"; // amber
+      case "Confirmed": return "#10b981"; // green
+      case "Delivered": return "#6b7280"; // gray
+      default: return "#cbd5e1";
+    }
+  };
+
+  const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+  const endOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth() + 1, 0);
+
+  const monthMatrix = (d: Date) => {
+    const start = startOfMonth(d);
+    const end = endOfMonth(d);
+    const matrix: Date[][] = [];
+    // Determine first day to show (start of week containing first of month)
+    const firstDay = new Date(start);
+    firstDay.setDate(start.getDate() - firstDay.getDay());
+
+    let cur = new Date(firstDay);
+    while (cur <= end || cur.getDay() !== 0) {
+      const week: Date[] = [];
+      for (let i = 0; i < 7; i++) {
+        week.push(new Date(cur));
+        cur.setDate(cur.getDate() + 1);
+      }
+      matrix.push(week);
+    }
+    return matrix;
+  };
+
+  const ordersByDate = useMemo(() => {
+    const map: Record<string, Order[]> = {};
+    for (const o of orders) {
+      if (!o.date_order_due) continue;
+      // Normalize to YYYY-MM-DD
+      const d = /^\d{4}-\d{2}-\d{2}$/.test(o.date_order_due) ? o.date_order_due : new Date(o.date_order_due).toISOString().split('T')[0];
+      map[d] = map[d] || [];
+      map[d].push(o);
+    }
+    return map;
+  }, [orders]);
 
     useEffect(() => {
     const fetchFlavours = async () => {
       try {
         const { data: flavourData, error: flavourError } = await supabase
-          .from("flavours_view")
+          .from("menu")
           .select("flavour");
 
         if (flavourError) throw flavourError;
@@ -92,7 +143,7 @@ export default function AdminPage() {
           customization,
           status,
           order_items (
-            flavour,
+            flavour_id,
             quantity,
             size
           )
@@ -100,10 +151,27 @@ export default function AdminPage() {
 
       if (ordersError) throw ordersError;
 
+      // Resolve any flavour_id references to flavour names via menu
+      const allFlavourIds = Array.from(new Set(
+        (ordersData as any[])
+          .flatMap((o: any) => (o.order_items || []).map((it: any) => it.flavour_id))
+          .filter((id: any) => id != null)
+      ));
+      const menuById: Record<number, string> = {};
+      if (allFlavourIds.length > 0) {
+        const { data: menuRows } = await supabase.from("menu").select("id, flavour").in("id", allFlavourIds);
+        (menuRows || []).forEach((m: any) => { menuById[m.id] = m.flavour; });
+      }
+
       const enrichedOrders = ordersData.map((o: any) => ({
         ...o,
-        items: o.order_items,
-        totalCookies: o.order_items.reduce((sum: number, i: any) => sum + i.quantity, 0),
+        items: (o.order_items || []).map((it: any) => ({
+          flavour: (it.flavour ?? menuById[it.flavour_id]) ?? "",
+          flavour_id: it.flavour_id ?? null,
+          quantity: it.quantity,
+          size: it.size,
+        })),
+        totalCookies: (o.order_items || []).reduce((sum: number, i: any) => sum + (i.quantity || 0), 0),
       }));
 
       setOrders(enrichedOrders);
@@ -228,7 +296,7 @@ export default function AdminPage() {
   };
 
   const updateItemQuantity = (orderId: number, flavour: string, value: number, size: "Small" | "Regular" | "Large" = "Regular") => {
-    const rounded = Math.max(0, Math.round(value / 5) * 5);
+    const rounded = Math.max(1, Math.round(value));
     setOrders(prev => prev.map(order => {
       if (order.id !== orderId) return order;
       const items = order.items.map(i => (i.flavour === flavour && i.size === size) ? { ...i, quantity: rounded } : i);
@@ -293,8 +361,39 @@ export default function AdminPage() {
         const { error: delItemsErr } = await supabase.from("order_items").delete().eq("order_id", order.id);
         if (delItemsErr) throw delItemsErr;
 
-        if (order.items.length > 0) {
-            const itemsToInsert = order.items.map(i => ({ order_id: order.id, flavour: i.flavour, quantity: i.quantity, size: i.size || "Regular" }));
+        const cleanItems = order.items.filter(i => i.flavour || i.flavour_id);
+        if (cleanItems.length > 0) {
+            // Build mapping from known flavour_ids and names to menu ids
+            const nameToId: Record<string, number> = {};
+
+            const ids = Array.from(new Set(cleanItems.map(i => i.flavour_id).filter((id): id is number => id != null)));
+            if (ids.length > 0) {
+              const { data: rowsById, error: errId } = await supabase.from("menu").select("id, flavour").in("id", ids);
+              if (errId) throw errId;
+              (rowsById || []).forEach((r: any) => { nameToId[String(r.flavour)] = Number(r.id); });
+            }
+
+            const names = Array.from(new Set(cleanItems.filter(i => !i.flavour_id).map(i => i.flavour).filter(Boolean)));
+            if (names.length > 0) {
+              const { data: rowsByName, error: errName } = await supabase.from("menu").select("id, flavour").in("flavour", names);
+              if (errName) throw errName;
+              (rowsByName || []).forEach((r: any) => { nameToId[String(r.flavour)] = Number(r.id); });
+            }
+
+            const missing: string[] = [];
+            const itemsToInsert = cleanItems.map(i => {
+              const id = i.flavour_id ?? nameToId[i.flavour];
+              if (!id) {
+                const label = i.flavour || (i.flavour_id ? `id:${i.flavour_id}` : "(unknown)");
+                missing.push(label);
+              }
+              return { order_id: order.id, flavour_id: id, quantity: i.quantity, size: i.size || "Regular" } as any;
+            });
+
+            if (missing.length > 0) {
+              throw new Error(`Invalid flavour(s) in order ${order.id}: ${missing.join(", ")}`);
+            }
+
             const { error: insErr } = await supabase.from("order_items").insert(itemsToInsert);
             if (insErr) throw insErr;
         }
@@ -330,20 +429,93 @@ export default function AdminPage() {
               Apply Changes
             </button>
           )}
-
-          <button onClick={() => router.push("/order")}>
-            + New Order
-          </button>
-
           {/* Logout moved to navbar for global display */}
         </>
       </Navbar>
 
+      {/* Calendar (admin only) - placed above filters */}
+      <div style={{ width: "100%", display: "flex", justifyContent: "center", marginTop: "6rem" }}>
+        <div className="admin-calendar" style={{ width: "100%", maxWidth: "1100px", background: "white", borderRadius: 12, padding: "0.75rem", boxShadow: "0 6px 18px rgba(2,6,23,0.06)", marginBottom: "0.25rem", overflowX: 'auto' }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem", gap: "0.75rem", flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", flexWrap: "wrap" }}>
+              <div style={{ fontWeight: 700, color: "#0f172a" }}>{calendarMonth.toLocaleString(undefined, { month: 'long', year: 'numeric' })}</div>
+              <select aria-label="Month" value={calendarMonth.getMonth()} onChange={e => setCalendarMonth(prev => new Date(prev.getFullYear(), Number(e.target.value), 1))} style={{ padding: "0.35rem", borderRadius: 6, border: "1px solid #e5e7eb" }}>
+                {MONTHS.map((m, i) => <option key={m} value={i}>{m}</option>)}
+              </select>
+              <input type="number" aria-label="Year" value={calendarMonth.getFullYear()} onChange={e => { const y = Number(e.target.value) || new Date().getFullYear(); setCalendarMonth(prev => new Date(y, prev.getMonth(), 1)); }} style={{ width: 96, padding: "0.35rem", borderRadius: 6, border: "1px solid #e5e7eb" }} />
+            </div>
+
+            <div style={{ display: "flex", gap: "0.5rem" }}>
+              <button onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))} style={{ padding: "0.4rem 0.6rem", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer" }}>◀ Prev</button>
+              <button onClick={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))} style={{ padding: "0.4rem 0.6rem", borderRadius: 8, border: "1px solid #e5e7eb", cursor: "pointer" }}>Next ▶</button>
+            </div>
+          </div>
+
+          <div className="weekday-header" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "6px", marginBottom: "0.5rem", textAlign: "center", color: "#374151" }}>
+            {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+              <div key={d} style={{ fontSize: "0.85rem", fontWeight: 700 }}>{d}</div>
+            ))}
+          </div>
+
+          <div className="calendar-grid" style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "8px", minWidth: 700 }}>
+            {monthMatrix(calendarMonth).map((week, wi) => (
+              week.map((day, di) => {
+                const key = day.toISOString().split('T')[0];
+                const dayOrders = ordersByDate[key] || [];
+                const isCurrentMonth = day.getMonth() === calendarMonth.getMonth();
+                const now = new Date();
+                const todayOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                const dayOnly = new Date(day.getFullYear(), day.getMonth(), day.getDate());
+                const isToday = dayOnly.getTime() === todayOnly.getTime();
+                const isPast = dayOnly.getTime() < todayOnly.getTime();
+                return (
+                  <div className={`day-cell ${isToday ? 'today' : ''} ${isPast ? 'past' : ''}`} key={`${wi}-${di}`} style={{ minHeight: 88, borderRadius: 8, padding: '6px', boxSizing: 'border-box', backgroundColor: isCurrentMonth ? '#fff' : '#f8fafc', border: '1px solid rgba(2,6,23,0.04)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                      <div className={`day-number ${isToday ? 'today' : ''}`} style={{ fontSize: 13, color: isPast ? '#94a3b8' : isCurrentMonth ? '#0f172a' : '#9ca3af', textDecoration: isPast ? 'line-through' : 'none' }}>{day.getDate()}</div>
+                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{/* placeholder for count */}</div>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {dayOrders.map(o => (
+                        <div key={o.id} title={`${o.buyer} — ${o.totalCookies} cookies • $${o.total_revenue?.toFixed?.(2) ?? o.total_revenue}`} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <span
+                              onClick={() => { setSearchTerm(o.buyer); setCurrentPage(1); }}
+                              onMouseEnter={e => {
+                                const el = e.currentTarget as HTMLElement;
+                                el.style.fontWeight = '800';
+                                el.style.transform = 'scale(1.03)';
+                              }}
+                              onMouseLeave={e => {
+                                const el = e.currentTarget as HTMLElement;
+                                el.style.fontWeight = '600';
+                                el.style.transform = 'none';
+                              }}
+                              style={{ display: 'inline-block', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 13, color: '#0f172a', fontWeight: 600, cursor: 'pointer', transition: 'transform 0.12s, font-weight 0.12s' }}
+                            >
+                              {o.buyer}
+                            </span>
+                            <div style={{ background: statusColor(o.status), color: 'white', padding: '0.12rem 0.5rem', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{o.status}</div>
+                          </div>
+                          <div style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 12, color: '#374151' }}>
+                            <div style={{ background: '#f3f4f6', padding: '0.12rem 0.45rem', borderRadius: 6 }}>🍪 {o.totalCookies}</div>
+                            <div style={{ background: '#f3f4f6', padding: '0.12rem 0.45rem', borderRadius: 6 }}>${Number(o.total_revenue || 0).toFixed(2)}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Filters & Search */}
       <div
         style={{
-          paddingTop: "6rem",
-          marginBottom: "0.5rem",
+          paddingTop: "0.5rem",
+          marginBottom: "0.25rem",
           display: "flex",
           gap: "0.75rem",
           flexWrap: "wrap",
@@ -510,6 +682,7 @@ export default function AdminPage() {
       </div>
 
       {/* Apply Changes moved into navbar */}
+      {/* Calendar removed from above table - will render below table */}
 
       {/* Table */}
       <div style={{ width: "100%", display: "flex", justifyContent: "center", marginTop: "0.75rem" }}>
@@ -621,7 +794,44 @@ export default function AdminPage() {
                       <div style={{ display: "flex", flexDirection: "column", gap: "0.35rem" }}>
                         {order.items.map((item, idx) => (
                           <div key={`${item.flavour}-${item.size}-${idx}`} style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px 120px 44px", alignItems: "center", gap: "0.5rem", fontSize: "clamp(0.65rem, 1.2vw, 0.85rem)", marginBottom: idx < order.items.length - 1 ? "0.3rem" : 0 }}>
-                            <div style={{ overflowWrap: "break-word" }}>{item.flavour}</div>
+                            <div style={{ overflowWrap: "break-word" }}>
+                              <select
+                                value={item.flavour}
+                                onChange={e => {
+                                  const newFlavour = e.target.value;
+                                  // Ignore selecting the empty placeholder — don't clear an existing flavour
+                                  if (newFlavour === "") return;
+                                  setOrders(prev => prev.map(o => {
+                                    if (o.id !== order.id) return o;
+                                    const items = o.items.map((i, ii) => {
+                                      if (ii !== idx) return i;
+                                      return { ...i, flavour: newFlavour };
+                                    });
+                                    return { ...o, items };
+                                  }));
+                                }}
+                                style={{ width: "100%", padding: "0.25rem", fontSize: "0.9rem" }}
+                              >
+                                <option value="" disabled={Boolean(item.flavour)}>Select flavour</option>
+                                {allFlavours.map((f: string) => {
+                                  // Count sizes currently used for this flavour in the order, excluding the item being edited
+                                  const usedSizes = order.items
+                                    .map((it, j) => ({ size: it.size as "Small" | "Regular" | "Large", flavour: it.flavour, idx: j }))
+                                    .filter(x => x.flavour === f && x.idx !== idx)
+                                    .map(x => x.size) as ("Small" | "Regular" | "Large")[];
+                                  const SIZE_OPTIONS = ["Small", "Regular", "Large"] as const;
+                                  const hasAllThree = SIZE_OPTIONS.every(s => usedSizes.includes(s as any));
+                                  // If selecting this flavour would create a duplicate size for the same flavour, disable it
+                                  const duplicateSize = usedSizes.includes(item.size);
+                                  const disabled = hasAllThree || duplicateSize;
+                                  return (
+                                    <option key={f} value={f} disabled={disabled} style={{ color: disabled ? "#999" : "black" }}>
+                                      {f}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                            </div>
                             <select
                               value={item.size || "Regular"}
                               onChange={e => {
@@ -648,25 +858,15 @@ export default function AdminPage() {
                               value={item.quantity}
                               onChange={e => {
                                 const selected = Number(e.target.value);
-                                const totalQty = order.items.reduce((sum, i) => sum + i.quantity, 0);
-                                const currentQty = item.quantity;
-                                const remaining = 100 - totalQty + currentQty;
-                                if (selected > remaining) return;
                                 updateItemQuantity(order.id, item.flavour, selected, item.size || "Regular");
                               }}
                               style={{ padding: "0.25rem", width: "100%", fontSize: "0.85rem", textAlign: "center" }}
                             >
-                              {[5, 10, 15, 20, 25, 30, 35, 40, 50, 60, 70, 80, 90, 100].map(q => {
-                                const totalQty = order.items.reduce((sum, i) => sum + i.quantity, 0);
-                                const currentQty = item.quantity;
-                                const remaining = 100 - totalQty + currentQty;
-                                const isDisabled = q > remaining;
-                                return (
-                                  <option key={q} value={q} disabled={isDisabled} style={{ color: isDisabled ? "#999" : "black" }}>
-                                    {q}
-                                  </option>
-                                );
-                              })}
+                              {Array.from({ length: 100 }, (_, i) => i + 1).map(q => (
+                                <option key={q} value={q}>
+                                  {q}
+                                </option>
+                              ))}
                             </select>
                             <button
                               onClick={() => removeItem(order.id, item.flavour, item.size || "Regular")}
@@ -701,20 +901,27 @@ export default function AdminPage() {
                           </div>
                         ))}
                         {editMode && (
-                          <div style={{ marginTop: "0.4rem", paddingTop: "0.4rem", borderTop: "1px solid #e5e7eb", display: "flex", gap: "0.3rem", alignItems: "center", flexWrap: "wrap" }}>
-                            <select value={addSelection[order.id] || ""} onChange={e => setAddSelection(prev => ({ ...prev, [order.id]: e.target.value }))} style={{ minWidth: "120px", padding: "0.25rem 0.4rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", fontSize: "0.8rem" }}>
-                              <option value="">Add flavour...</option>
-                              {allFlavours.map((f: string) => {
-                                const count = order.items.filter((i: OrderItem) => i.flavour === f).length;
-                                const isDisabled = count >= 3;
-                                return (
-                                  <option key={f} value={f} disabled={isDisabled} style={{ color: isDisabled ? "#999" : "black" }}>
-                                    {f}
-                                  </option>
-                                );
-                              })}
-                            </select>
-                            <button onClick={() => addItem(order.id, addSelection[order.id] || "")} style={{ padding: "0.25rem 0.4rem", borderRadius: "0.375rem", backgroundColor: "#3b82f6", color: "white", cursor: "pointer", border: "none", fontWeight: "500", transition: "background-color 0.12s, box-shadow 0.12s", fontSize: "0.8rem" }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = "#2563eb"; e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.12)"; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = "#3b82f6"; e.currentTarget.style.boxShadow = "none"; }} onMouseDown={e => { e.currentTarget.style.backgroundColor = "#1d4ed8"; }} onMouseUp={e => { e.currentTarget.style.backgroundColor = "#2563eb"; }}>+</button>
+                          <div style={{ marginTop: "0.4rem", paddingTop: "0.4rem", borderTop: "1px solid #e5e7eb", display: "grid", gridTemplateColumns: "minmax(0,1fr) 120px 120px 44px", gap: "0.3rem", alignItems: "center" }}>
+                            <div style={{ display: "flex", gap: "0.3rem", alignItems: "center" }}>
+                              <select value={addSelection[order.id] || ""} onChange={e => setAddSelection(prev => ({ ...prev, [order.id]: e.target.value }))} style={{ minWidth: "120px", padding: "0.25rem 0.4rem", borderRadius: "0.375rem", border: "1px solid #d1d5db", fontSize: "0.8rem" }}>
+                                <option value="">Add flavour...</option>
+                                {allFlavours.map((f: string) => {
+                                  const count = order.items.filter((i: OrderItem) => i.flavour === f).length;
+                                  const isDisabled = count >= 3;
+                                  return (
+                                    <option key={f} value={f} disabled={isDisabled} style={{ color: isDisabled ? "#999" : "black" }}>
+                                      {f}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              <button onClick={() => addItem(order.id, addSelection[order.id] || "")} style={{ padding: "0.25rem 0.4rem", borderRadius: "0.375rem", backgroundColor: "#3b82f6", color: "white", cursor: "pointer", border: "none", fontWeight: "500", transition: "background-color 0.12s, box-shadow 0.12s", fontSize: "0.8rem" }} onMouseEnter={e => { e.currentTarget.style.backgroundColor = "#2563eb"; e.currentTarget.style.boxShadow = "0 2px 6px rgba(0,0,0,0.12)"; }} onMouseLeave={e => { e.currentTarget.style.backgroundColor = "#3b82f6"; e.currentTarget.style.boxShadow = "none"; }} onMouseDown={e => { e.currentTarget.style.backgroundColor = "#1d4ed8"; }} onMouseUp={e => { e.currentTarget.style.backgroundColor = "#2563eb"; }}>+</button>
+                            </div>
+                            <div />
+                            <div style={{ textAlign: "center", color: "#374151", fontWeight: 600 }}>
+                              Total: {order.totalCookies}
+                            </div>
+                            <div />
                           </div>
                         )}
                       </div>
@@ -800,7 +1007,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Summary + Pagination: responsive layout */}
+      
       <div className="admin-summary" style={{ marginTop: "1rem", display: "flex", justifyContent: "center", padding: "0.25rem 0" }}>
         <div className="admin-summary-inner" style={{ width: "100%", maxWidth: "95vw", boxSizing: "border-box" }}>
           <div className="admin-totals" style={{ display: "flex", gap: "1rem", flexWrap: "wrap", justifyContent: "center", alignItems: "center", marginBottom: "0.5rem" }}>
@@ -876,7 +1083,7 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <style>{`\n            .admin-summary-inner { position: relative; }\n            @media (max-width: 720px) {\n              .admin-summary-inner { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }\n              .admin-pagination .pagination-controls { width: 100%; justify-content: space-between; }\n              .summary-card { min-width: 100px; }\n            }\n            @media (min-width: 721px) {\n              .admin-summary-inner { display: block; }\n              .admin-totals { position: static; transform: none; }\n              .admin-pagination { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }\n            }\n          `}</style>
+          <style>{`\n            .admin-summary-inner { position: relative; }\n            @media (max-width: 720px) {\n              .admin-summary-inner { display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }\n              .admin-pagination .pagination-controls { width: 100%; justify-content: space-between; }\n              .summary-card { min-width: 100px; }\n            }\n            @media (min-width: 721px) {\n              .admin-summary-inner { display: block; }\n              .admin-totals { position: static; transform: none; }\n              .admin-pagination { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }\n            }\n\n            /* Calendar responsive tweaks */\n            .admin-calendar { overflow-x: auto; -webkit-overflow-scrolling: touch; }\n            .admin-calendar .calendar-grid { min-width: 700px; }\n            .admin-calendar .weekday-header { min-width: 700px; }\n            .admin-calendar .day-cell { transition: transform 0.12s; }\n            /* Today's highlight */\n            .admin-calendar .day-cell.today { outline: 2px solid rgba(59,130,246,0.35); background: linear-gradient(180deg,#eff6ff, #ffffff); }\n            .admin-calendar .day-number { display: inline-block; padding: 6px 8px; border-radius: 8px; }\n            .admin-calendar .day-number.today { color: #1d4ed8; font-weight: 700; }\n            @media (max-width: 640px) {\n              .admin-calendar { padding: 0.5rem !important; }\n              .admin-calendar .calendar-grid { min-width: 560px; gap: 6px; }\n              .admin-calendar .weekday-header { min-width: 560px; gap: 4px; }\n              .admin-calendar .day-cell { min-height: 72px; padding: 6px; }\n              .admin-calendar .day-cell div { font-size: 12px; }\n              .admin-calendar .calendar-controls { flex-direction: column; gap: 0.4rem; align-items: flex-start; }\n            }\n          `}</style>
         </div>
       </div>
 

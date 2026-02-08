@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import Navbar from "@/components/ui/navbar";
-import flavours from "@/lib/flavours";
+// menu items are loaded from the `menu` table below; remove hard-coded fallbacks
 import { supabase } from "@/lib/supabaseClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,16 @@ interface PricingConfig {
   Large: number;
 }
 
-const cookies = flavours;
+interface MenuItem {
+  id?: number;
+  flavour: string;
+  description?: string | null;
+  ingredients?: string | null;
+  image_path?: string | null;
+  hidden?: boolean | null;
+}
+
+const fallbackCookies: MenuItem[] = [];
 
 const quantities = [5, 10, 15, 20, 25, 30, 35, 40];
 const adminQuantities = Array.from({ length: 100 }, (_, i) => i + 1);
@@ -43,8 +52,17 @@ export default function OrderPage() {
   const [customization, setCustomization] = useState("");
   const [items, setItems] = useState<CookieItem[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [receiptEmail, setReceiptEmail] = useState("");
+  const [isSendingReceipt, setIsSendingReceipt] = useState(false);
+  const [receiptSent, setReceiptSent] = useState(false);
+  const [lastOrder, setLastOrder] = useState<any | null>(null);
+  const [lastItems, setLastItems] = useState<CookieItem[]>([]);
+  const [lastTotals, setLastTotals] = useState<{ totalCookies: number; totalCost: number } | null>(null);
+  const [showReportPopup, setShowReportPopup] = useState(false);
+  const [showContactPopup, setShowContactPopup] = useState(false);
   const [isAdminView, setIsAdminView] = useState<boolean>(false);
   const [pricing, setPricing] = useState<PricingConfig>(DEFAULT_PRICING);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
 
   const today = new Date().toISOString().split("T")[0];
 
@@ -57,6 +75,45 @@ export default function OrderPage() {
       }
     });
   }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    const loadMenuItems = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("menu")
+          .select("id, flavour, description, ingredients, image_path, hidden")
+          .order("flavour", { ascending: true });
+
+        if (error || !data) {
+          console.error("Failed to load menu items (query error)", error);
+          if (mounted) setMenuItems([]);
+          return;
+        }
+        if (!mounted) return;
+        setMenuItems(data as MenuItem[]);
+      } catch (err: unknown) {
+        try {
+          const printable = err && typeof err === 'object' ? JSON.stringify(err, Object.getOwnPropertyNames(err)) : String(err);
+          console.error("Failed to load menu items (exception)", printable);
+        } catch (e) {
+          console.error("Failed to load menu items", err);
+        }
+        if (mounted) setMenuItems([]);
+      }
+    };
+
+    loadMenuItems();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (showSuccess && typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [showSuccess]);
 
   const totalCookies = items.reduce((sum, item) => sum + item.quantity, 0);
   const totalCost = items.reduce((sum, item) => {
@@ -138,21 +195,70 @@ export default function OrderPage() {
       return;
     }
 
-    const orderItems = items.map(item => ({
+    // Resolve flavours to menu ids and insert order_items using flavour_id
+    const flavours = Array.from(new Set(items.map(i => i.flavour)));
+    const { data: menuRows, error: menuErr } = await supabase.from("menu").select("id, flavour").in("flavour", flavours);
+    if (menuErr) {
+      console.error(menuErr);
+      alert("Failed to resolve menu flavours.");
+      return;
+    }
+
+    const menuMap: Record<string, number> = {};
+    (menuRows || []).forEach((r: any) => { menuMap[String(r.flavour)] = Number(r.id); });
+
+    const missing = flavours.filter(f => !menuMap[f]);
+    if (missing.length > 0) {
+      alert(`Order contains unknown flavours: ${missing.join(", ")}. Please pick from the menu.`);
+      return;
+    }
+
+    const orderItemsToInsert = items.map(item => ({
       order_id: orderData.id,
-      flavour: item.flavour,
+      flavour_id: menuMap[item.flavour],
       quantity: item.quantity,
       size: item.size || "Regular",
     }));
 
-    const { error: itemsError } = await supabase.from("order_items").insert(orderItems);
+    const { error: itemsError } = await supabase.from("order_items").insert(orderItemsToInsert);
     if (itemsError) {
       console.error(itemsError);
       alert("Failed to add cookies.");
       return;
     }
 
+    try {
+      await fetch("/api/order-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order: orderData,
+          items: items.map(item => ({
+            flavour: item.flavour,
+            quantity: item.quantity,
+            size: item.size || "Regular",
+          })),
+          totals: {
+            totalCookies,
+            totalCost,
+          },
+          kind: "admin",
+        }),
+      });
+    } catch (notifyError) {
+      console.error("Failed to send admin notification", notifyError);
+    }
+
+    setLastOrder(orderData);
+    setLastItems(items.map(item => ({ ...item })));
+    setLastTotals({ totalCookies, totalCost });
+    setReceiptEmail("");
+    setReceiptSent(false);
+    setIsSendingReceipt(false);
     setShowSuccess(true);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
     setName("");
     setInstagram("");
     setDueDate("");
@@ -160,20 +266,41 @@ export default function OrderPage() {
     setItems([]);
   };
 
-  return (
-    <div style={{ minHeight: "100vh", backgroundColor: isAdminView ? "#f5e6d3" : 'var(--page-bg)' }}>
-      <Navbar isAdmin={isAdminView}>
-        <>
-          <button onClick={() => router.push("/home")}>Home</button>
-          <button onClick={() => router.push("/order")}>Make Order</button>
-          {isAdminView && (
-            <button onClick={() => router.push("/admin")}>Admin</button>
-          )}
-        </>
-      </Navbar>
+  const sendReceiptEmail = async () => {
+    if (!receiptEmail || !lastOrder || !lastTotals) return;
+    try {
+      setIsSendingReceipt(true);
+      await fetch("/api/order-notify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order: lastOrder,
+          items: lastItems.map(item => ({
+            flavour: item.flavour,
+            quantity: item.quantity,
+            size: item.size || "Regular",
+          })),
+          totals: lastTotals,
+          kind: "receipt",
+          recipientEmail: receiptEmail,
+        }),
+      });
+      setReceiptSent(true);
+    } catch (notifyError) {
+      console.error("Failed to send receipt email", notifyError);
+    } finally {
+      setIsSendingReceipt(false);
+    }
+  };
 
-      <div style={{ paddingTop: "6rem", paddingBottom: "2.5rem", background: isAdminView ? "linear-gradient(180deg,#fbf7f2 0%,#faf8f5 100%)" : `linear-gradient(180deg,#e9f8ff 0%, ${'var(--page-bg)'} 100%)` }}>
-        <Card style={{ maxWidth: "820px", margin: "0 auto", borderRadius: "1rem", background: isAdminView ? "#faf8f5" : "linear-gradient(135deg,#f8fbff 0%, #ffffff 40%, #e6f9ff 100%)", boxShadow: "0 12px 40px rgba(2,6,23,0.08)" }}>
+  const cookies = menuItems.filter((item) => !item.hidden);
+
+  return (
+    <div style={{ minHeight: "100vh", backgroundColor: isAdminView ? "#f5e6d3" : "var(--page-bg)", padding: "0.5rem" }}>
+      <Navbar isAdmin={isAdminView} />
+
+      <div style={{ paddingTop: "6rem", paddingBottom: "2.5rem", backgroundColor: isAdminView ? "#f5e6d3" : "var(--page-bg)" }}>
+        <Card style={{ maxWidth: "820px", margin: "0 auto", borderRadius: "1rem", background: isAdminView ? "#faf8f5" : "#ffffff", boxShadow: "0 12px 40px rgba(2,6,23,0.08)" }}>
           <CardContent style={{ padding: "2.25rem" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
               <h1 style={{ fontSize: "2rem", fontWeight: "bold" }}>🍪 {isAdminView ? "Custom Order" : "Make an Order"}</h1>
@@ -195,40 +322,27 @@ export default function OrderPage() {
             {isAdminView && (
               <div style={{ marginTop: "1rem" }}>
                 <p style={{ fontWeight: 600, marginBottom: "0.5rem", color: "#402b2c" }}>Pricing by Size:</p>
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "0.5rem",
-                    flexWrap: "wrap", // allows cards to move to next line
-                  }}
-                >
+
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: "0.75rem" }}>
                   {["Small", "Regular", "Large"].map(size => (
                     <div
                       key={size}
                       style={{
+                        background: "#fffaf8",
+                        border: "1px solid #efe6dd",
+                        padding: "0.6rem",
+                        borderRadius: "0.75rem",
+                        boxShadow: "0 6px 18px rgba(2,6,23,0.04)",
                         display: "flex",
-                        alignItems: "center",
-                        gap: "0.25rem",
-                        backgroundColor: "#f5e6d3",
-                        padding: "0.35rem 0.5rem",
-                        borderRadius: "0.5rem",
-                        border: "1px solid #e0d4c0",
-                        flex: "1 1 180px", // bigger flex-basis → wraps sooner
-                        minWidth: "180px",
-                        boxSizing: "border-box",
+                        flexDirection: "column",
+                        gap: "0.5rem",
                       }}
                     >
-                      <span
-                        style={{
-                          fontSize: "0.85rem",
-                          fontWeight: 500,
-                          color: "#402b2c",
-                          flexShrink: 1,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {size}:
-                      </span>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <span style={{ fontSize: "0.95rem", fontWeight: 700, color: "#402b2c" }}>{size}</span>
+                        <span style={{ fontSize: "0.85rem", color: "#6b4f3c" }}>${pricing[size as keyof PricingConfig].toFixed(2)}</span>
+                      </div>
+
                       <input
                         type="number"
                         min="0"
@@ -241,28 +355,16 @@ export default function OrderPage() {
                           }))
                         }
                         style={{
-                          flexGrow: 1,      // take remaining space
-                          flexShrink: 1,    // shrink if needed
-                          minWidth: "50px", // slightly larger minimum
-                          padding: "0.2rem",
-                          borderRadius: "0.375rem",
-                          border: "1px solid #ccc",
+                          width: "100%",
+                          padding: "0.45rem",
+                          borderRadius: "0.5rem",
+                          border: "1px solid #ddd",
+                          fontSize: "0.95rem",
                           textAlign: "center",
-                          fontSize: "0.85rem",
-                          backgroundColor: "#fff",
+                          background: "white",
                           color: "#402b2c",
                         }}
                       />
-                      <span
-                        style={{
-                          fontSize: "0.75rem",
-                          color: "#6b4f3c",
-                          flexShrink: 0,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        ${pricing[size as keyof PricingConfig].toFixed(2)}
-                      </span>
                     </div>
                   ))}
                 </div>
@@ -288,29 +390,47 @@ export default function OrderPage() {
 
             {/* Cookies */}
             <div style={{ marginTop: "2rem" }}>
-              <strong>Cookies selected: {totalCookies}{!isAdminView && " / 40"}</strong>
+              <strong>Cookies selected: {totalCookies}{!isAdminView && " (Max 40)"}</strong>
 
-              {cookies.map(cookie => {
+              <p style={{ marginTop: "0.5rem", fontSize: "0.8rem", color: "#6b7280" }}>
+                {!isAdminView && (
+                  <>
+                    ${DEFAULT_PRICE_PER_COOKIE.toFixed(2)} per cookie · ${(DEFAULT_PRICE_PER_COOKIE * 10).toFixed(2)} per 10 cookies
+                  </>
+                )}
+              </p>
+
+              <p style={{ marginTop: "0.25rem", fontSize: "0.8rem", color: "#6b7280" }}>
+                Orders are tentative and subject to confirmation. For custom orders, please contact Ray directly on his <a href="https://www.instagram.com/rayscookies.to/" target="_blank" rel="noopener noreferrer" style={{ color: "#402b2c", fontWeight: "500" }}>Instagram</a>.
+              </p>
+
+
+              {cookies.length === 0 ? (
+                <div style={{ marginTop: '1rem', color: '#6b7280', fontSize: '0.95rem' }}>
+                  No flavours available. Please check back later or ask an admin to add menu items.
+                </div>
+              ) : cookies.map(cookie => {
               const availableQuantities = isAdminView ? adminQuantities : quantities;
               const sizes: ("Small" | "Regular" | "Large")[] = ["Small", "Regular", "Large"];
 
               return (
                 <div
                   key={cookie.flavour}
+                  className="cookie-card"
                   style={{
                     border: "1px solid #e6eef6",
                     padding: "0.9rem",
                     borderRadius: "0.9rem",
                     marginTop: "1rem",
-                    background: "white",
+                    background: "#faf8f5",
                     boxShadow: "0 6px 18px rgba(2,6,23,0.04)",
                   }}
                 >
                   {/* Image + Description */}
-                  <div style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
+                  <div className="cookie-row" style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
                     <div style={{ width: 96, height: 96, flex: "0 0 96px", position: "relative", borderRadius: 12, overflow: "hidden", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.03)" }}>
                       <Image
-                        src={cookie.image ?? '/cookies/birthday.jpg'}
+                        src={cookie.image_path ?? '/cookies/birthday.jpg'}
                         alt={cookie.flavour}
                         width={96}
                         height={96}
@@ -319,10 +439,11 @@ export default function OrderPage() {
                     </div>
                     <div style={{ flex: 1 }}>
                       <strong style={{ display: "block" }}>{cookie.flavour}</strong>
-                      <p style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>{cookie.ingredients}</p>
+                      <p style={{ fontSize: "0.85rem", marginTop: "0.25rem" }}>{cookie.description}</p>
                       {!isAdminView && (
                         <div style={{ marginTop: "0.5rem" }}>
                           <select
+                            className="quantity-select"
                             value={items.find(i => i.flavour === cookie.flavour)?.quantity || ""}
                             onChange={e => handleQuantityChange(cookie.flavour, e.target.value)}
                             style={{
@@ -341,7 +462,7 @@ export default function OrderPage() {
                               const remaining = 40 - totalCookies + (items.find(i => i.flavour === cookie.flavour)?.quantity || 0);
                               return (
                                 <option key={q} value={q} disabled={q > remaining}>
-                                  {q}
+                                  {q} - ${ (q * pricing.Regular).toFixed(2) }
                                 </option>
                               );
                             })}
@@ -511,21 +632,21 @@ export default function OrderPage() {
                 </>
               )}
 
-              <p
-                style={{
-                  marginTop: "0.5rem",
-                  fontSize: "0.8rem",
-                  color: "#6b7280",
-                }}
-              >
-                {!isAdminView && (
-                  <>
-                    ${DEFAULT_PRICE_PER_COOKIE.toFixed(2)} per cookie · ${(DEFAULT_PRICE_PER_COOKIE * 10).toFixed(2)} per
-                    10 cookies
-                  </>
-                )}
-              </p>
+              {/* price-per-cookie text moved above 'Cookies selected' */}
             </div>
+
+            {/* Confirmation notice before placing order */}
+            {!isAdminView && (
+              <div style={{ marginTop: "0.75rem", color: "#374151", fontSize: "0.95rem" }}>
+                After placing your order, Ray will contact you via Instagram to confirm your order and pickup details.
+              </div>
+            )}
+
+            {!isAdminView && (
+              <div style={{ marginTop: "0.4rem", color: "#6b7280", fontSize: "0.9rem" }}>
+                Payments are made via e‑transfer.
+              </div>
+            )}
 
 
 
@@ -543,15 +664,48 @@ export default function OrderPage() {
                 cursor: canSubmit ? "pointer" : "not-allowed",
                 boxShadow: canSubmit ? "0 10px 30px rgba(64,43,44,0.14)" : "none",
                 transition: "transform 0.12s, box-shadow 0.12s, filter 0.12s",
+                transform: "translateY(0)",
+                filter: "none",
               }}
-              onMouseEnter={e => { if (canSubmit) { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)"; (e.currentTarget as HTMLButtonElement).style.filter = "brightness(1.03)"; } }}
-              onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "translateY(0)"; (e.currentTarget as HTMLButtonElement).style.filter = "none"; }}
+              onMouseEnter={canSubmit ? (e => {
+                const el = e.currentTarget as HTMLButtonElement;
+                el.style.transform = "translateY(-2px)";
+                el.style.filter = "brightness(1.03)";
+              }) : undefined}
+              onMouseLeave={canSubmit ? (e => {
+                const el = e.currentTarget as HTMLButtonElement;
+                el.style.transform = "translateY(0)";
+                el.style.filter = "none";
+              }) : undefined}
             >
               Place Order
             </button>
           </CardContent>
         </Card>
       </div>
+            {!isAdminView && (
+              <footer style={{ borderTop: "1px solid rgba(2,6,23,0.04)", padding: "1rem", marginTop: "1rem" }}>
+                <div style={{ width: "100%", maxWidth: 1100, margin: "0 auto", display: "flex", justifyContent: "space-between", alignItems: "center", color: "#475569" }}>
+                  <div>© {new Date().getFullYear()} Ray's Cookies</div>
+                  <div style={{ display: "flex", gap: "1rem" }}>
+                    <a
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); setShowContactPopup(true); }}
+                      style={{ color: "#475569", textDecoration: "none" }}
+                    >
+                      Contact
+                    </a>
+                    <a
+                      href="#"
+                      onClick={(e) => { e.preventDefault(); setShowReportPopup(true); }}
+                      style={{ color: "#475569", textDecoration: "none" }}
+                    >
+                      Report Issues
+                    </a>
+                  </div>
+                </div>
+              </footer>
+            )}
       {showSuccess && (
       <div
         style={{
@@ -570,7 +724,7 @@ export default function OrderPage() {
             padding: "2rem",
             borderRadius: "1.25rem",
             maxWidth: "90%",
-            width: "420px",
+            width: "480px",
             textAlign: "center",
             boxShadow: "0 20px 40px rgba(0,0,0,0.25)",
             border: "2px solid #402b2c",
@@ -599,6 +753,51 @@ export default function OrderPage() {
             Ray will contact you on Instagram to confirm pickup details.
           </p>
 
+          <div
+            style={{
+              margin: "0 0 1rem",
+              padding: "0.75rem",
+              borderRadius: "0.75rem",
+              backgroundColor: "#eff6ff",
+              border: "1px solid #bfdbfe",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ fontWeight: 700, color: "#1e3a8a", marginBottom: "0.5rem" }}>
+              Email your receipt
+            </div>
+            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+              <input
+                type="email"
+                placeholder="your@email.com"
+                value={receiptEmail}
+                onChange={e => setReceiptEmail(e.target.value)}
+                style={{
+                  flex: "1 1 220px",
+                  padding: "0.45rem 0.6rem",
+                  borderRadius: "0.5rem",
+                  border: "1px solid #cbd5f5",
+                  fontSize: "0.9rem",
+                }}
+              />
+              <button
+                onClick={sendReceiptEmail}
+                disabled={!receiptEmail || isSendingReceipt || receiptSent}
+                style={{
+                  padding: "0.45rem 0.9rem",
+                  borderRadius: "0.6rem",
+                  border: "none",
+                  backgroundColor: receiptSent ? "#94a3b8" : "#2563eb",
+                  color: "white",
+                  fontWeight: 700,
+                  cursor: receiptSent ? "default" : "pointer",
+                }}
+              >
+                {receiptSent ? "Sent" : isSendingReceipt ? "Sending..." : "Send"}
+              </button>
+            </div>
+          </div>
+
           <button
             onClick={() => setShowSuccess(false)}
             style={{
@@ -616,8 +815,45 @@ export default function OrderPage() {
         </div>
       </div>
     )}
+      {showReportPopup && (
+        <div style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1400 }}>
+          <div style={{ minWidth: 260, maxWidth: 340, background: 'white', color: '#0f172a', padding: '0.75rem 1rem', borderRadius: 12, boxShadow: '0 12px 40px rgba(2,6,23,0.12)', border: '1px solid rgba(2,6,23,0.06)', fontSize: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+              <div style={{ fontWeight: 700 }}>Report an issue</div>
+              <button onClick={() => setShowReportPopup(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#475569', fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ marginTop: 6, color: '#374151', lineHeight: 1.4 }}>Please email <a href="mailto:mcintyredanial@gmail.com" style={{ color: '#0369a1', textDecoration: 'underline' }}>mcintyredanial@gmail.com</a> with a short description and screenshots if possible.</div>
+          </div>
+        </div>
+      )}
 
+      {showContactPopup && (
+        <div style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 1400 }}>
+          <div style={{ minWidth: 260, maxWidth: 340, background: 'white', color: '#0f172a', padding: '0.75rem 1rem', borderRadius: 12, boxShadow: '0 12px 40px rgba(2,6,23,0.12)', border: '1px solid rgba(2,6,23,0.06)', fontSize: 14 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: 8 }}>
+              <div style={{ fontWeight: 700 }}>Contact Ray</div>
+              <button onClick={() => setShowContactPopup(false)} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: '#475569', fontSize: 16 }}>✕</button>
+            </div>
+            <div style={{ marginTop: 6, color: '#374151', lineHeight: 1.4 }}>You can reach Ray on Instagram: <a href="https://www.instagram.com/rayscookies.to/" target="_blank" rel="noreferrer" style={{ color: '#0369a1', textDecoration: 'underline' }}>instagram.com/rayscookies.to</a></div>
+          </div>
+        </div>
+      )}
 
+      <style>{`
+        @media (max-width: 640px) {
+          .cookie-row {
+            flex-direction: column;
+          }
+          .cookie-card {
+            padding: 0.75rem;
+          }
+          .quantity-select {
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+          }
+        }
+      `}</style>
     </div>
   );
 }
